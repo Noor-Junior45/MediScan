@@ -1,0 +1,5 @@
+{
+  "name": "Mediscan AI",
+  "description": "AI-powered medicine tracker with camera extraction and Google Sheets export.",
+  "requestFramePermissions": ["camera"]
+}

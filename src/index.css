@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent: var(--accent-color, #ffffff);
+}
+
+:root {
+  --accent-color: #ffffff;
+}

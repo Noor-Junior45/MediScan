@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "Medicine": {
+      "title": "Medicine",
+      "description": "A medicine entry in the user's vault",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "dosage": { "type": "string" },
+        "expirationDate": { "type": "string", "format": "date" },
+        "usageInstructions": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "userId": { "type": "string" },
+        "capturedImage": { "type": "string" },
+        "quantity": { "type": "number" },
+        "taken": { "type": "boolean" }
+      },
+      "required": ["id", "name", "dosage", "expirationDate", "userId"]
+    },
+    "MedicineHistory": {
+      "title": "MedicineHistory",
+      "description": "A log of changes made to a medicine",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "medicineId": { "type": "string" },
+        "userId": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "actionType": { "type": "string", "enum": ["CREATE", "EDIT", "MARK_TAKEN", "MARK_NOT_TAKEN", "DELETE"] },
+        "details": { "type": "string" }
+      },
+      "required": ["id", "medicineId", "userId", "timestamp", "actionType", "details"]
+    },
+    "UserConfig": {
+      "title": "UserConfig",
+      "description": "User-specific settings and preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "emailNotificationsEnabled": { "type": "boolean" },
+        "browserNotificationsEnabled": { "type": "boolean" },
+        "alertThreshold": { "type": "number" },
+        "accentColor": { "type": "string" },
+        "sortOrder": { "type": "string", "enum": ["default", "asc", "desc"] }
+      },
+      "required": ["userId", "email"]
+    }
+  },
+  "firestore": {
+    "/medicines/{medicineId}": {
+      "schema": "Medicine",
+      "description": "Collection of medicines"
+    },
+    "/medicines/{medicineId}/history/{historyId}": {
+      "schema": "MedicineHistory",
+      "description": "Subcollection of history logs for a medicine"
+    },
+    "/userConfigs/{userId}": {
+      "schema": "UserConfig",
+      "description": "User configuration and preferences"
+    }
+  }
+}
