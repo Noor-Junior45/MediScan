@@ -42,12 +42,34 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
 
   const captureFrame = () => {
     if (videoRef.current && canvasRef.current) {
-      const context = canvasRef.current.getContext('2d');
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+      
       if (context) {
-        canvasRef.current.width = videoRef.current.videoWidth;
-        canvasRef.current.height = videoRef.current.videoHeight;
-        context.drawImage(videoRef.current, 0, 0);
-        const base64 = canvasRef.current.toDataURL('image/jpeg', 0.8).split(',')[1];
+        // Calculate new dimensions (max 800px)
+        const MAX_DIMENSION = 800;
+        let width = video.videoWidth;
+        let height = video.videoHeight;
+        
+        if (width > height) {
+          if (width > MAX_DIMENSION) {
+            height = Math.round((height * MAX_DIMENSION) / width);
+            width = MAX_DIMENSION;
+          }
+        } else {
+          if (height > MAX_DIMENSION) {
+            width = Math.round((width * MAX_DIMENSION) / height);
+            height = MAX_DIMENSION;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(video, 0, 0, width, height);
+        
+        // Use higher compression to ensure it fits in Firestore (1MB limit)
+        const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
         onCapture(base64);
       }
     }
@@ -117,8 +139,8 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
               )}
             </AnimatePresence>
 
-            <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center pt-8 pb-6 px-6 z-10 bg-black/40 backdrop-blur-2xl border-t border-white/10 rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.3)]">
-              <p className="text-white/80 text-sm font-medium tracking-wide text-center mb-6">
+            <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-8 z-10">
+              <p className="text-white/70 text-sm font-light tracking-wide px-8 text-center">
                 Position the medicine label within the frame for AI analysis
               </p>
               

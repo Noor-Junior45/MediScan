@@ -68,9 +68,12 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
     const diffTime = expiry.getTime() - today.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     
+    const effectiveThreshold = alertThreshold === 90 ? 92 : alertThreshold;
+    
     if (diffDays < 0) return { label: 'Expired', color: 'text-red-500', bg: 'bg-red-500/10', Icon: XCircle };
+    if (diffDays === 0) return { label: 'Expiring Today', color: 'text-orange-500', bg: 'bg-orange-500/10', Icon: AlertTriangle };
     if (diffDays <= 10) return { label: 'Expiring Soon (10d)', color: 'text-orange-500', bg: 'bg-orange-500/10', Icon: AlertTriangle };
-    if (diffDays <= alertThreshold) {
+    if (diffDays <= effectiveThreshold) {
       const label = alertThreshold === 90 ? 'Expiring in 3mo' : `Expiring in ${alertThreshold}d`;
       return { label, color: 'text-yellow-500', bg: 'bg-yellow-500/10', Icon: Clock };
     }
@@ -151,9 +154,10 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
         const diffTime = expiry.getTime() - today.getTime();
         const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
+        const effectiveThreshold = alertThreshold === 90 ? 92 : alertThreshold;
         const isExpired = diffDays < 0;
         const isExpiringSoon = diffDays >= 0 && diffDays <= 10;
-        const isExpiringAlert = diffDays > 10 && diffDays <= alertThreshold;
+        const isExpiringAlert = diffDays > 10 && diffDays <= effectiveThreshold;
         const isLowQuantity = med.quantity !== undefined && med.quantity <= lowQuantityThreshold;
         const needsAttention = !med.taken && (isExpired || isExpiringSoon || isExpiringAlert || isLowQuantity);
         const isSelected = selectedIds.has(med.id);

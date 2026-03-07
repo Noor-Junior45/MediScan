@@ -205,7 +205,17 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
                         type="number"
                         min="0"
                         value={formData.quantity === undefined ? '' : formData.quantity}
-                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value === '' ? undefined : parseInt(e.target.value, 10) })}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setFormData({ ...formData, quantity: undefined });
+                          } else {
+                            const parsed = parseInt(val, 10);
+                            if (!isNaN(parsed) && parsed >= 0) {
+                              setFormData({ ...formData, quantity: parsed });
+                            }
+                          }
+                        }}
                         className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20"
                         placeholder="e.g. 30"
                       />

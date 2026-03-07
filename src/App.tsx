@@ -14,6 +14,13 @@ import {
   handleFirestoreError, OperationType, deleteField
 } from './firebase';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import localforage from 'localforage';
+
+// Configure localforage
+localforage.config({
+  name: 'Mediscan',
+  storeName: 'medicine_images'
+});
 
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 
@@ -37,7 +44,7 @@ export default function App() {
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false);
   const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
   // Auth State Listener
   useEffect(() => {
@@ -119,11 +126,19 @@ export default function App() {
 
       const expiringMeds = medicines.filter(m => {
         const expiry = new Date(m.expirationDate);
+        const [year, month, day] = m.expirationDate.split('-').map(Number);
+        if (year && month && day) {
+          expiry.setFullYear(year, month - 1, day);
+        }
+        expiry.setHours(0, 0, 0, 0);
+        
         const diffTime = expiry.getTime() - today.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+        
+        const effectiveThreshold = alertThreshold === 90 ? 92 : alertThreshold;
         
         // Notify if expiring exactly on the threshold, or exactly in 10 days, or exactly today
-        return diffDays === alertThreshold || diffDays === 10 || diffDays === 0;
+        return diffDays === effectiveThreshold || diffDays === 10 || diffDays === 0;
       });
 
       if (expiringMeds.length > 0) {
@@ -208,9 +223,16 @@ export default function App() {
     setIsFormOpen(true);
   };
 
-  const handleEdit = (medicine: Medicine) => {
-    setEditingMedicine(medicine);
+  const handleEdit = async (medicine: Medicine) => {
     setExtractionWarning(null);
+    
+    try {
+      const image = await localforage.getItem<string>(`image_${medicine.id}`);
+      setEditingMedicine({ ...medicine, capturedImage: image || undefined });
+    } catch (e) {
+      setEditingMedicine(medicine);
+    }
+    
     setIsFormOpen(true);
   };
 
@@ -218,15 +240,72 @@ export default function App() {
     if (!user) return;
 
     try {
-      if (editingMedicine && editingMedicine.id) {
+      const { capturedImage, ...firestoreData } = data;
+      
+      const normalizedName = (firestoreData.name || '').toLowerCase().trim();
+      const existingMed = medicines.find(m => 
+        m.name.toLowerCase().trim() === normalizedName &&
+        m.expirationDate === firestoreData.expirationDate &&
+        (!editingMedicine || m.id !== editingMedicine.id)
+      );
+
+      if (existingMed) {
+        const medRef = doc(db, 'medicines', existingMed.id);
+        
+        const currentQty = existingMed.quantity || 0;
+        const addedQty = firestoreData.quantity || 0;
+        const newQuantity = currentQty + addedQty;
+
+        const updateData: any = { 
+          quantity: newQuantity,
+          userId: user.uid
+        };
+
+        if (existingMed.dosage === 'N/A' && firestoreData.dosage) {
+          updateData.dosage = firestoreData.dosage;
+        }
+        if (!existingMed.usageInstructions && firestoreData.usageInstructions) {
+          updateData.usageInstructions = firestoreData.usageInstructions;
+        }
+
+        await setDoc(medRef, updateData, { merge: true });
+
+        if (capturedImage) {
+          await localforage.setItem(`image_${existingMed.id}`, capturedImage);
+        }
+
+        const historyId = crypto.randomUUID();
+        await setDoc(doc(db, `medicines/${existingMed.id}/history`, historyId), {
+          id: historyId,
+          medicineId: existingMed.id,
+          userId: user.uid,
+          timestamp: Date.now(),
+          actionType: 'EDIT',
+          details: `Merged with another entry. Quantity increased by ${addedQty} to ${newQuantity}.`
+        });
+
+        if (editingMedicine && editingMedicine.id) {
+          await deleteDoc(doc(db, 'medicines', editingMedicine.id));
+          await localforage.removeItem(`image_${editingMedicine.id}`);
+        }
+      } else if (editingMedicine && editingMedicine.id) {
         const medRef = doc(db, 'medicines', editingMedicine.id);
-        const updateData: any = { ...editingMedicine, ...data, userId: user.uid };
+        const updateData: any = { ...editingMedicine, ...firestoreData, userId: user.uid };
+        
+        // Ensure capturedImage is not saved to Firestore
+        delete updateData.capturedImage;
+
         Object.keys(updateData).forEach(key => {
           if (updateData[key] === undefined) {
             updateData[key] = deleteField();
           }
         });
         await setDoc(medRef, updateData, { merge: true });
+        
+        // Save image locally if provided
+        if (capturedImage) {
+          await localforage.setItem(`image_${editingMedicine.id}`, capturedImage);
+        }
         
         // Log history
         const changes: string[] = [];
@@ -251,14 +330,13 @@ export default function App() {
         const id = crypto.randomUUID();
         const newMed: any = {
           id,
-          name: data.name || 'Unknown',
-          dosage: data.dosage || 'N/A',
-          expirationDate: data.expirationDate || new Date().toISOString().split('T')[0],
-          usageInstructions: data.usageInstructions || '',
+          name: firestoreData.name || 'Unknown',
+          dosage: firestoreData.dosage || 'N/A',
+          expirationDate: firestoreData.expirationDate || new Date().toISOString().split('T')[0],
+          usageInstructions: firestoreData.usageInstructions || '',
           createdAt: Date.now(),
-          capturedImage: data.capturedImage,
           userId: user.uid,
-          ...(data.quantity !== undefined ? { quantity: data.quantity } : {}),
+          ...(firestoreData.quantity !== undefined ? { quantity: firestoreData.quantity } : {}),
         };
         Object.keys(newMed).forEach(key => {
           if (newMed[key] === undefined) {
@@ -266,6 +344,11 @@ export default function App() {
           }
         });
         await setDoc(doc(db, 'medicines', id), newMed);
+
+        // Save image locally if provided
+        if (capturedImage) {
+          await localforage.setItem(`image_${id}`, capturedImage);
+        }
 
         // Log creation history
         const historyId = crypto.randomUUID();
@@ -366,19 +449,13 @@ export default function App() {
     }
   };
 
-  const handleClearData = async () => {
-    if (!user) return;
-    setShowClearConfirm(true);
-  };
-
   const confirmClearData = async () => {
     if (!user) return;
-    setShowClearConfirm(false);
     try {
       // In a real app, you'd use a batch or cloud function. 
       // Here we'll just delete them one by one for simplicity in this demo environment.
       for (const med of medicines) {
-        await deleteDoc(doc(db, 'medicines', med.id));
+        await handlePermanentDelete(med.id);
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'medicines');
@@ -434,6 +511,17 @@ export default function App() {
       complete: async (results) => {
         const importedMeds = results.data as any[];
         let count = 0;
+        let mergedCount = 0;
+
+        const batch = writeBatch(db);
+        const existingMap = new Map<string, Medicine>();
+        medicines.forEach(m => {
+          const key = `${m.name.toLowerCase().trim()}_${m.expirationDate}`;
+          existingMap.set(key, m);
+        });
+        
+        const newMedsMap = new Map<string, any>();
+        const existingUpdates = new Map<string, number>();
 
         for (const row of importedMeds) {
           // Map CSV headers to Medicine object
@@ -442,51 +530,99 @@ export default function App() {
           const dosage = row['Dosage'] || row['dosage'];
           const quantityRaw = row['Quantity'] || row['quantity'] || row['Count'] || row['count'];
           const quantity = quantityRaw ? parseInt(quantityRaw, 10) : undefined;
-          const expirationDate = row['Expiration Date'] || row['expirationDate'] || row['expiration_date'] || row['Expiry Date'] || row['expiryDate'] || row['expiry_date'];
+          const expirationDateRaw = row['Expiration Date'] || row['expirationDate'] || row['expiration_date'] || row['Expiry Date'] || row['expiryDate'] || row['expiry_date'];
           const usageInstructions = row['Usage Instructions'] || row['usageInstructions'] || row['usage_instructions'] || row['Notes'] || row['notes'] || '';
 
-          if (name && expirationDate) {
-            const id = crypto.randomUUID();
-            const newMed: Medicine = {
-              id,
-              name,
-              dosage: dosage || 'N/A',
-              expirationDate,
-              usageInstructions,
-              createdAt: Date.now(),
-              userId: user.uid,
-              ...(quantity !== undefined && !isNaN(quantity) ? { quantity } : {}),
-            };
-            try {
-              await setDoc(doc(db, 'medicines', id), newMed);
+          if (name && expirationDateRaw) {
+            let expirationDate = expirationDateRaw;
+            // Try to format date to YYYY-MM-DD if it's not already
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(expirationDateRaw)) {
+              try {
+                const d = new Date(expirationDateRaw);
+                if (!isNaN(d.getTime())) {
+                  expirationDate = d.toISOString().split('T')[0];
+                }
+              } catch (e) {
+                // Keep original, let validation fail if it's invalid
+              }
+            }
+
+            const key = `${name.toLowerCase().trim()}_${expirationDate}`;
+            const addQty = quantity !== undefined && !isNaN(quantity) && quantity >= 0 ? quantity : 0;
+
+            if (existingMap.has(key)) {
+              const existingMed = existingMap.get(key)!;
+              const currentTotal = existingUpdates.has(existingMed.id) 
+                ? existingUpdates.get(existingMed.id)! 
+                : (existingMed.quantity || 0);
+              existingUpdates.set(existingMed.id, currentTotal + addQty);
+              mergedCount++;
+            } else if (newMedsMap.has(key)) {
+              const newMed = newMedsMap.get(key)!;
+              newMed.quantity = (newMed.quantity || 0) + addQty;
+              mergedCount++;
+            } else {
+              const id = crypto.randomUUID();
+              const newMed: any = {
+                id,
+                name,
+                dosage: dosage || 'N/A',
+                expirationDate,
+                usageInstructions,
+                createdAt: Date.now(),
+                userId: user.uid,
+                ...(addQty > 0 ? { quantity: addQty } : {}),
+              };
+              newMedsMap.set(key, newMed);
               count++;
-            } catch (err) {
-              handleFirestoreError(err, OperationType.WRITE, 'medicines');
             }
           }
         }
-        alert(`Successfully imported ${count} medicines.`);
+        
+        try {
+          for (const [id, newQty] of existingUpdates.entries()) {
+            batch.update(doc(db, 'medicines', id), { quantity: newQty });
+          }
+          
+          for (const newMed of newMedsMap.values()) {
+            batch.set(doc(db, 'medicines', newMed.id), newMed);
+          }
+
+          if (count > 0 || existingUpdates.size > 0) {
+            await batch.commit();
+            setAlertMessage(`Successfully imported ${count} new medicines and merged ${mergedCount} duplicates.`);
+          } else {
+            setAlertMessage("No valid medicines found to import.");
+          }
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, 'medicines');
+        }
+        
         // Reset input
         event.target.value = '';
       },
       error: (error) => {
         console.error("CSV Parse Error:", error);
-        alert("Failed to parse CSV file. Please ensure it's a valid Google Sheets export.");
+        setAlertMessage("Failed to parse CSV file. Please ensure it's a valid Google Sheets export.");
       }
     });
   };
 
   const exportToSheets = () => {
-    if (medicines.length === 0) return;
+    const activeMedicines = medicines.filter(m => !m.isDeleted);
+    if (activeMedicines.length === 0) {
+      setAlertMessage("No active medicines to export.");
+      return;
+    }
 
     const headers = ['Name', 'Dosage', 'Quantity', 'Expiration Date', 'Usage Instructions', 'Alert Formula'];
-    const rows = medicines.map(m => [
-      m.name,
-      m.dosage,
+    const rows = activeMedicines.map((m, index) => [
+      `"${m.name.replace(/"/g, '""')}"`,
+      `"${m.dosage.replace(/"/g, '""')}"`,
       m.quantity !== undefined ? m.quantity.toString() : '',
       m.expirationDate,
-      m.usageInstructions.replace(/,/g, ';'),
-      `=IF(TODAY() >= (D${medicines.indexOf(m) + 2} - 90), "ALERT: 3 Months", IF(TODAY() >= (D${medicines.indexOf(m) + 2} - 10), "ALERT: 10 Days", "OK"))`
+      `"${m.usageInstructions.replace(/"/g, '""')}"`,
+      `=IF(TODAY() >= (D${index + 2} - 90), "ALERT: 3 Months", IF(TODAY() >= (D${index + 2} - 10), "ALERT: 10 Days", "OK"))`
     ]);
 
     const csvContent = [
@@ -525,6 +661,9 @@ export default function App() {
       batch.delete(doc(db, 'medicines', id));
       
       await batch.commit();
+      
+      // Remove local image
+      await localforage.removeItem(`image_${id}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'medicines');
     }
@@ -591,9 +730,11 @@ export default function App() {
     const diffTime = expiry.getTime() - today.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
+    const effectiveThreshold = alertThreshold === 90 ? 92 : alertThreshold;
+
     if (filter === 'expired') return diffDays < 0;
     if (filter === 'expiring_soon') return diffDays >= 0 && diffDays <= 10;
-    if (filter === 'expiring_3_months') return diffDays >= 0 && diffDays <= alertThreshold;
+    if (filter === 'expiring_3_months') return diffDays >= 0 && diffDays <= effectiveThreshold;
     
     return true;
   }).sort((a, b) => {
@@ -726,7 +867,8 @@ export default function App() {
                 
                 const diffTime = expiry.getTime() - today.getTime();
                 const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-                return diffDays > 0 && diffDays <= alertThreshold;
+                const effectiveThreshold = alertThreshold === 90 ? 92 : alertThreshold;
+                return diffDays >= 0 && diffDays <= effectiveThreshold;
               }).length}
             </p>
           </div>
@@ -757,7 +899,7 @@ export default function App() {
             className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap transition-all ${filter === 'expiring_3_months' ? 'bg-yellow-500' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
             style={filter === 'expiring_3_months' ? { color: '#000000' } : {}}
           >
-            &lt; 3 Mo
+            {alertThreshold === 90 ? '< 3 Mo' : `< ${alertThreshold}d`}
           </button>
           <div className="w-px h-6 bg-white/10 mx-1 self-center shrink-0"></div>
           <button 
@@ -826,45 +968,6 @@ export default function App() {
       {/* Modals */}
       <CookieConsentBanner />
       <AnimatePresence>
-        {showClearConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => setShowClearConfirm(false)}
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-sm bg-[#1a1a1a] border border-white/10 rounded-3xl p-6 shadow-2xl"
-            >
-              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4 mx-auto">
-                <Trash2 className="text-red-500" size={24} />
-              </div>
-              <h3 className="text-xl font-medium text-white text-center mb-2">Clear All Data?</h3>
-              <p className="text-white/60 text-sm text-center mb-6">
-                Are you sure you want to clear all medicines? This will delete them from the cloud and cannot be undone.
-              </p>
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => setShowClearConfirm(false)}
-                  className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={confirmClearData}
-                  className="flex-1 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-medium transition-colors shadow-lg shadow-red-500/20"
-                >
-                  Clear Data
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
         {isCameraOpen && (
           <CameraCapture 
             onCapture={handleCapture}
@@ -894,7 +997,7 @@ export default function App() {
         {isSettingsOpen && (
           <SettingsModal 
             onClose={() => setIsSettingsOpen(false)}
-            onClearData={handleClearData}
+            onClearData={confirmClearData}
             alertThreshold={alertThreshold}
             setAlertThreshold={(val) => handleUpdateConfig({ alertThreshold: val })}
             lowQuantityThreshold={lowQuantityThreshold}
@@ -910,7 +1013,7 @@ export default function App() {
                 if (permission === 'granted') {
                   handleUpdateConfig({ browserNotificationsEnabled: true });
                 } else {
-                  alert('Please allow notifications in your browser settings to use this feature.');
+                  setAlertMessage('Please allow notifications in your browser settings to use this feature.');
                   handleUpdateConfig({ browserNotificationsEnabled: false });
                 }
               } else {
@@ -921,6 +1024,7 @@ export default function App() {
             setTheme={(val) => handleUpdateConfig({ theme: val })}
             userEmail={user.email || ''}
             onLogout={handleLogout}
+            medicines={medicines}
             deletedMedicines={deletedMedicines}
             onRestore={handleRestore}
             onPermanentDelete={handlePermanentDelete}
@@ -1004,6 +1108,29 @@ export default function App() {
                 className="w-full mt-10 py-4 bg-white text-black rounded-full font-bold hover:bg-white/90 transition-all"
               >
                 Got it
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {alertMessage && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md"
+          >
+            <div className="w-full max-w-sm bg-[#1a1a1a] border border-white/10 rounded-[32px] p-6 text-center">
+              <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Info className="text-white" size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Notice</h3>
+              <p className="text-white/60 text-sm mb-6">{alertMessage}</p>
+              <button 
+                onClick={() => setAlertMessage(null)}
+                className="w-full py-3 bg-white text-black rounded-xl font-bold hover:bg-white/90 transition-all"
+              >
+                OK
               </button>
             </div>
           </motion.div>
