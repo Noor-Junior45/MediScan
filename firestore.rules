@@ -9,7 +9,7 @@ service cloud.firestore {
     // Fields: id, name, dosage, expirationDate, usageInstructions, createdAt, userId, capturedImage
     //
     // Collection: userConfigs
-    // Fields: userId, email, emailNotificationsEnabled, browserNotificationsEnabled, alertThreshold, accentColor, sortOrder
+    // Fields: userId, email, emailNotificationsEnabled, browserNotificationsEnabled, alertThreshold, accentColor, sortOrder, lowQuantityThreshold, theme
     //
     // ===============================================================
 
@@ -34,7 +34,7 @@ service cloud.firestore {
 
     function isValidMedicine(data) {
       let requiredFields = ['id', 'name', 'dosage', 'expirationDate', 'userId', 'createdAt'];
-      let optionalFields = ['usageInstructions', 'capturedImage', 'taken', 'quantity'];
+      let optionalFields = ['usageInstructions', 'capturedImage', 'taken', 'quantity', 'isDeleted', 'deletedAt'];
       let allFields = requiredFields.concat(optionalFields);
       
       return data.keys().hasAll(requiredFields) &&
@@ -48,12 +48,14 @@ service cloud.firestore {
              (!('usageInstructions' in data) || (data.usageInstructions is string && data.usageInstructions.size() < 2000)) &&
              (!('capturedImage' in data) || (data.capturedImage is string && data.capturedImage.size() < 2000000)) &&
              (!('taken' in data) || data.taken is bool) &&
-             (!('quantity' in data) || (data.quantity is number && data.quantity >= 0));
+             (!('quantity' in data) || (data.quantity is number && data.quantity >= 0)) &&
+             (!('isDeleted' in data) || data.isDeleted is bool) &&
+             (!('deletedAt' in data) || data.deletedAt == null || data.deletedAt is number);
     }
 
     function isValidUserConfig(data) {
       let requiredFields = ['userId', 'email'];
-      let optionalFields = ['emailNotificationsEnabled', 'browserNotificationsEnabled', 'alertThreshold', 'accentColor', 'sortOrder', 'lowQuantityThreshold'];
+      let optionalFields = ['emailNotificationsEnabled', 'browserNotificationsEnabled', 'alertThreshold', 'accentColor', 'sortOrder', 'lowQuantityThreshold', 'theme'];
       let allFields = requiredFields.concat(optionalFields);
 
       return data.keys().hasAll(requiredFields) &&
@@ -65,7 +67,8 @@ service cloud.firestore {
              (!('alertThreshold' in data) || (data.alertThreshold is number && data.alertThreshold >= 0 && data.alertThreshold <= 365)) &&
              (!('accentColor' in data) || (data.accentColor is string && data.accentColor.matches('^#[0-9a-fA-F]{6}$'))) &&
              (!('sortOrder' in data) || (data.sortOrder in ['default', 'asc', 'desc'])) &&
-             (!('lowQuantityThreshold' in data) || (data.lowQuantityThreshold is number && data.lowQuantityThreshold >= 0));
+             (!('lowQuantityThreshold' in data) || (data.lowQuantityThreshold is number && data.lowQuantityThreshold >= 0)) &&
+             (!('theme' in data) || (data.theme in ['system', 'light', 'dark']));
     }
 
     function isValidMedicineHistory(data) {

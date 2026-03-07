@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Camera, Download, Upload, Info, Settings, Search, X } from 'lucide-react';
+import { Plus, Camera, Download, Upload, Info, Settings, Search, X, History, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Papa from 'papaparse';
 import { Medicine } from './types';
@@ -10,10 +10,12 @@ import { SettingsModal } from './components/SettingsModal';
 import { extractMedicineData } from './services/geminiService';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, 
-  collection, doc, setDoc, deleteDoc, onSnapshot, query, where, orderBy, getDoc, User,
-  handleFirestoreError, OperationType
+  collection, doc, setDoc, deleteDoc, updateDoc, writeBatch, onSnapshot, query, where, orderBy, getDoc, getDocs, User,
+  handleFirestoreError, OperationType, deleteField
 } from './firebase';
 import { ErrorBoundary } from './components/ErrorBoundary';
+
+import { CookieConsentBanner } from './components/CookieConsentBanner';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -33,6 +35,8 @@ export default function App() {
   const [accentColor, setAccentColor] = useState('#ffffff');
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false);
   const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Auth State Listener
   useEffect(() => {
@@ -57,6 +61,7 @@ export default function App() {
         if (data.emailNotificationsEnabled !== undefined) setEmailNotificationsEnabled(data.emailNotificationsEnabled);
         if (data.browserNotificationsEnabled !== undefined) setBrowserNotificationsEnabled(data.browserNotificationsEnabled);
         if (data.sortOrder) setSortOrder(data.sortOrder);
+        if (data.theme) setTheme(data.theme);
       } else {
         // Initialize default config
         setDoc(configRef, {
@@ -67,7 +72,8 @@ export default function App() {
           alertThreshold: 90,
           lowQuantityThreshold: 5,
           accentColor: '#ffffff',
-          sortOrder: 'default'
+          sortOrder: 'default',
+          theme: 'system'
         }).catch(err => handleFirestoreError(err, OperationType.WRITE, 'userConfigs'));
       }
     }, (error) => {
@@ -143,8 +149,41 @@ export default function App() {
   }, [medicines, browserNotificationsEnabled, alertThreshold]);
 
   useEffect(() => {
-    document.documentElement.style.setProperty('--accent-color', accentColor);
-  }, [accentColor]);
+    const applyThemeAndAccent = () => {
+      let isDark = false;
+      if (theme === 'dark') {
+        isDark = true;
+      } else if (theme === 'light') {
+        isDark = false;
+      } else {
+        // System preference
+        isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      }
+
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+
+      // Adjust accent color for light mode if it's white
+      let color = accentColor;
+      if (!isDark && color === '#ffffff') {
+        color = '#111827';
+      }
+      document.documentElement.style.setProperty('--accent-color', color);
+    };
+
+    applyThemeAndAccent();
+
+    // Listen for system theme changes if set to 'system'
+    if (theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = () => applyThemeAndAccent();
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+  }, [theme, accentColor]);
 
   const handleLogin = async () => {
     try {
@@ -178,7 +217,13 @@ export default function App() {
     try {
       if (editingMedicine && editingMedicine.id) {
         const medRef = doc(db, 'medicines', editingMedicine.id);
-        await setDoc(medRef, { ...editingMedicine, ...data, userId: user.uid }, { merge: true });
+        const updateData: any = { ...editingMedicine, ...data, userId: user.uid };
+        Object.keys(updateData).forEach(key => {
+          if (updateData[key] === undefined) {
+            updateData[key] = deleteField();
+          }
+        });
+        await setDoc(medRef, updateData, { merge: true });
         
         // Log history
         const changes: string[] = [];
@@ -201,7 +246,7 @@ export default function App() {
 
       } else {
         const id = crypto.randomUUID();
-        const newMed: Medicine = {
+        const newMed: any = {
           id,
           name: data.name || 'Unknown',
           dosage: data.dosage || 'N/A',
@@ -212,6 +257,11 @@ export default function App() {
           userId: user.uid,
           ...(data.quantity !== undefined ? { quantity: data.quantity } : {}),
         };
+        Object.keys(newMed).forEach(key => {
+          if (newMed[key] === undefined) {
+            delete newMed[key];
+          }
+        });
         await setDoc(doc(db, 'medicines', id), newMed);
 
         // Log creation history
@@ -235,13 +285,31 @@ export default function App() {
   const handleDelete = async (id: string) => {
     if (!user) return;
     try {
-      // Note: In a real app, you might want a cloud function to clean up subcollections
-      // when a parent document is deleted. For this demo, we'll just delete the parent.
-      await deleteDoc(doc(db, 'medicines', id));
+      await updateDoc(doc(db, 'medicines', id), {
+        isDeleted: true,
+        deletedAt: Date.now()
+      });
       setIsFormOpen(false);
       setEditingMedicine(null);
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, 'medicines');
+      handleFirestoreError(error, OperationType.UPDATE, 'medicines');
+    }
+  };
+
+  const handleDeleteMultiple = async (ids: string[]) => {
+    if (!user) return;
+    try {
+      const batch = writeBatch(db);
+      ids.forEach(id => {
+        const docRef = doc(db, 'medicines', id);
+        batch.update(docRef, {
+          isDeleted: true,
+          deletedAt: Date.now()
+        });
+      });
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'medicines');
     }
   };
 
@@ -267,10 +335,12 @@ export default function App() {
 
   const handleClearData = async () => {
     if (!user) return;
-    // For safety, we only clear medicines, not the whole account
-    const confirm = window.confirm("Are you sure you want to clear all medicines? This will delete them from the cloud.");
-    if (!confirm) return;
+    setShowClearConfirm(true);
+  };
 
+  const confirmClearData = async () => {
+    if (!user) return;
+    setShowClearConfirm(false);
     try {
       // In a real app, you'd use a batch or cloud function. 
       // Here we'll just delete them one by one for simplicity in this demo environment.
@@ -400,7 +470,68 @@ export default function App() {
 
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
+  const deletedMedicines = medicines.filter(m => m.isDeleted);
+
+  const handlePermanentDelete = async (id: string) => {
+    if (!user) return;
+    try {
+      const batch = writeBatch(db);
+      
+      // Delete all history documents
+      const historyRef = collection(db, 'medicines', id, 'history');
+      const historySnapshot = await getDocs(historyRef);
+      historySnapshot.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      
+      // Delete the medicine document
+      batch.delete(doc(db, 'medicines', id));
+      
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'medicines');
+    }
+  };
+
+  // Cleanup old deleted medicines
+  useEffect(() => {
+    if (!user || deletedMedicines.length === 0) return;
+    
+    const cleanup = async () => {
+      const now = Date.now();
+      const fifteenDaysMs = 15 * 24 * 60 * 60 * 1000;
+      
+      const toDelete = deletedMedicines.filter(m => m.deletedAt && (now - m.deletedAt > fifteenDaysMs));
+      
+      if (toDelete.length > 0) {
+        try {
+          for (const m of toDelete) {
+            await handlePermanentDelete(m.id);
+          }
+        } catch (error) {
+          console.error("Cleanup error:", error);
+        }
+      }
+    };
+    
+    cleanup();
+  }, [user, deletedMedicines]);
+
+  const handleRestore = async (id: string) => {
+    if (!user) return;
+    try {
+      await updateDoc(doc(db, 'medicines', id), {
+        isDeleted: false,
+        deletedAt: null
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'medicines');
+    }
+  };
+
   const filteredMedicines = medicines.filter(m => {
+    if (m.isDeleted) return false;
+
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = 
       m.name.toLowerCase().includes(searchLower) ||
@@ -586,7 +717,8 @@ export default function App() {
           </button>
           <button 
             onClick={() => setFilter('expiring_3_months')}
-            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap transition-all ${filter === 'expiring_3_months' ? 'bg-yellow-500 text-black' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
+            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap transition-all ${filter === 'expiring_3_months' ? 'bg-yellow-500' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
+            style={filter === 'expiring_3_months' ? { color: '#000000' } : {}}
           >
             &lt; 3 Mo
           </button>
@@ -607,42 +739,94 @@ export default function App() {
           medicines={filteredMedicines} 
           onEdit={handleEdit} 
           onToggleTaken={handleToggleTaken}
+          onDeleteMultiple={handleDeleteMultiple}
           lowQuantityThreshold={lowQuantityThreshold}
           alertThreshold={alertThreshold}
         />
       </main>
 
       {/* Floating Action Bar */}
-      <div className="fixed bottom-8 left-0 right-0 z-40 px-6">
-        <div className="max-w-md mx-auto bg-black/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-3 flex items-center justify-between shadow-2xl">
+      <div className="fixed bottom-6 left-0 right-0 z-40 px-6">
+        <div className="max-w-[320px] mx-auto bg-black/40 backdrop-blur-3xl border border-white/10 rounded-full p-2 flex items-center justify-between shadow-2xl">
           <button 
             onClick={handleAddManual}
-            className="flex-1 py-4 flex flex-col items-center gap-1 text-white/40 hover:text-white transition-all"
+            className="flex-1 py-2 flex flex-col items-center gap-1 transition-all"
+            style={{ color: 'var(--accent-color)', opacity: 0.6 }}
+            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
           >
-            <Plus size={24} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Manual</span>
+            <Plus size={20} />
+            <span className="text-[9px] font-bold uppercase tracking-widest">Manual</span>
           </button>
           
+          <div className="w-px h-8 bg-white/10 mx-1"></div>
+
           <button 
             onClick={() => setIsCameraOpen(true)}
-            className="relative -top-8 w-20 h-20 bg-accent rounded-full flex items-center justify-center shadow-[0_20px_40px_rgba(var(--accent-color-rgb),0.2)] active:scale-95 transition-transform"
+            className="flex-none py-2 px-4 flex flex-col items-center justify-center gap-1 transition-all hover:scale-105 active:scale-95"
+            style={{ color: 'var(--accent-color)' }}
           >
-            <div className="absolute inset-0 rounded-full bg-gradient-to-b from-accent to-neutral-300" />
-            <Camera className="relative text-black" size={32} />
+            <Camera size={20} />
+            <span className="text-[9px] font-bold uppercase tracking-widest">Scan</span>
           </button>
+
+          <div className="w-px h-8 bg-white/10 mx-1"></div>
 
           <button 
             onClick={() => setIsGuideOpen(true)}
-            className="flex-1 py-4 flex flex-col items-center gap-1 text-white/40 hover:text-white transition-all"
+            className="flex-1 py-2 flex flex-col items-center gap-1 transition-all"
+            style={{ color: 'var(--accent-color)', opacity: 0.6 }}
+            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
           >
-            <Info size={24} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Guide</span>
+            <Info size={20} />
+            <span className="text-[9px] font-bold uppercase tracking-widest">Guide</span>
           </button>
         </div>
       </div>
 
       {/* Modals */}
+      <CookieConsentBanner />
       <AnimatePresence>
+        {showClearConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowClearConfirm(false)}
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm bg-[#1a1a1a] border border-white/10 rounded-3xl p-6 shadow-2xl"
+            >
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4 mx-auto">
+                <Trash2 className="text-red-500" size={24} />
+              </div>
+              <h3 className="text-xl font-medium text-white text-center mb-2">Clear All Data?</h3>
+              <p className="text-white/60 text-sm text-center mb-6">
+                Are you sure you want to clear all medicines? This will delete them from the cloud and cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowClearConfirm(false)}
+                  className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmClearData}
+                  className="flex-1 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-medium transition-colors shadow-lg shadow-red-500/20"
+                >
+                  Clear Data
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
         {isCameraOpen && (
           <CameraCapture 
             onCapture={handleCapture}
@@ -693,8 +877,13 @@ export default function App() {
                 handleUpdateConfig({ browserNotificationsEnabled: false });
               }
             }}
+            theme={theme}
+            setTheme={(val) => handleUpdateConfig({ theme: val })}
             userEmail={user.email || ''}
             onLogout={handleLogout}
+            deletedMedicines={deletedMedicines}
+            onRestore={handleRestore}
+            onPermanentDelete={handlePermanentDelete}
           />
         )}
 
@@ -747,6 +936,25 @@ export default function App() {
                   </h3>
                   <p className="text-white/50 text-sm leading-relaxed mb-4">
                     Your data is now stored in the cloud. Even if you delete the app, your medicines are safe. Enable email notifications in settings to get alerts directly in your inbox.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                    <History size={18} className="text-white/40" />
+                    History Log & Multi-Select
+                  </h3>
+                  <p className="text-white/50 text-sm leading-relaxed mb-4">
+                    Tap the red clock icon when editing a medicine to view its complete history log. You can also select multiple medicines from the main list to delete them at once. Deleted items are kept in the <strong>Recently Deleted</strong> section in Settings for 15 days before permanent removal.
+                  </p>
+                </section>
+                <section>
+                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                    <ShieldAlert size={18} className="text-white/40" />
+                    Cookie Policy & Privacy
+                  </h3>
+                  <p className="text-white/50 text-sm leading-relaxed mb-4">
+                    We use cookies to enhance your experience and analyze app usage via Google Analytics. You can manage your cookie preferences at any time in the <strong>Settings</strong> menu under "Cookie Preferences". We do not sell your personal data.
                   </p>
                 </section>
               </div>

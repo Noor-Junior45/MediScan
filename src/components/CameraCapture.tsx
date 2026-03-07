@@ -117,8 +117,8 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
               )}
             </AnimatePresence>
 
-            <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-8 z-10">
-              <p className="text-white/70 text-sm font-light tracking-wide px-8 text-center">
+            <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center pt-8 pb-6 px-6 z-10 bg-black/40 backdrop-blur-2xl border-t border-white/10 rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.3)]">
+              <p className="text-white/80 text-sm font-medium tracking-wide text-center mb-6">
                 Position the medicine label within the frame for AI analysis
               </p>
               

@@ -18,6 +18,8 @@ export interface Medicine {
   userId: string;
   taken?: boolean;
   quantity?: number;
+  isDeleted?: boolean;
+  deletedAt?: number;
 }
 
 export const STORAGE_KEY = "mediscan_medicines";

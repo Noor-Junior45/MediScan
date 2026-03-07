@@ -1,5 +1,7 @@
 {
-  "name": "Mediscan AI",
+  "name": "DawaLens AI",
   "description": "AI-powered medicine tracker with camera extraction and Google Sheets export.",
-  "requestFramePermissions": ["camera"]
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

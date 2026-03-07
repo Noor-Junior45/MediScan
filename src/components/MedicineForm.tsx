@@ -89,7 +89,7 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
             {medicine?.id && (
               <button 
                 onClick={() => setShowHistory(!showHistory)} 
-                className={`p-2 rounded-xl transition-colors ${showHistory ? 'bg-white/10 text-white' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
+                className={`p-2 rounded-xl transition-colors ${showHistory ? 'bg-red-500/20 text-red-500' : 'text-red-400 hover:text-red-300 hover:bg-red-500/10'}`}
                 title="View History"
               >
                 <History size={20} />

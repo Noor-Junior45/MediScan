@@ -14,7 +14,9 @@
         "userId": { "type": "string" },
         "capturedImage": { "type": "string" },
         "quantity": { "type": "number" },
-        "taken": { "type": "boolean" }
+        "taken": { "type": "boolean" },
+        "isDeleted": { "type": "boolean" },
+        "deletedAt": { "type": ["number", "null"] }
       },
       "required": ["id", "name", "dosage", "expirationDate", "userId"]
     },
@@ -43,7 +45,9 @@
         "browserNotificationsEnabled": { "type": "boolean" },
         "alertThreshold": { "type": "number" },
         "accentColor": { "type": "string" },
-        "sortOrder": { "type": "string", "enum": ["default", "asc", "desc"] }
+        "sortOrder": { "type": "string", "enum": ["default", "asc", "desc"] },
+        "lowQuantityThreshold": { "type": "number" },
+        "theme": { "type": "string", "enum": ["system", "light", "dark"] }
       },
       "required": ["userId", "email"]
     }

@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, Trash2, Bell, Palette, ShieldAlert, LogOut, Mail } from 'lucide-react';
+import { X, Trash2, Bell, Palette, ShieldAlert, LogOut, Mail, RotateCcw, AlertTriangle } from 'lucide-react';
 import { motion } from 'motion/react';
+import { Medicine } from '../types';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -15,8 +16,13 @@ interface SettingsModalProps {
   setEmailNotificationsEnabled: (val: boolean) => void;
   browserNotificationsEnabled: boolean;
   setBrowserNotificationsEnabled: (val: boolean) => void;
+  theme: 'light' | 'dark' | 'system';
+  setTheme: (val: 'light' | 'dark' | 'system') => void;
   userEmail: string;
   onLogout: () => void;
+  deletedMedicines: Medicine[];
+  onRestore: (id: string) => void;
+  onPermanentDelete: (id: string) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -32,10 +38,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setEmailNotificationsEnabled,
   browserNotificationsEnabled,
   setBrowserNotificationsEnabled,
+  theme,
+  setTheme,
   userEmail,
-  onLogout
+  onLogout,
+  deletedMedicines,
+  onRestore,
+  onPermanentDelete
 }) => {
   const [showConfirmClear, setShowConfirmClear] = React.useState(false);
+  const [cookieConsent, setCookieConsent] = React.useState(localStorage.getItem('mediscan_cookie_consent') !== 'denied');
 
   const colors = [
     { name: 'Classic', value: '#ffffff' },
@@ -75,6 +87,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
           </section>
 
+          {/* Recently Deleted */}
+          <section className="space-y-4">
+            <div className="flex items-center gap-2 text-white/60">
+              <Trash2 size={18} />
+              <h3 className="text-sm font-bold uppercase tracking-widest">Recently Deleted</h3>
+            </div>
+            {deletedMedicines.length === 0 ? (
+              <p className="text-xs text-white/30 italic px-1">No recently deleted items.</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                {deletedMedicines.map(med => {
+                  const daysLeft = med.deletedAt ? Math.max(0, 15 - Math.floor((Date.now() - med.deletedAt) / (1000 * 60 * 60 * 24))) : 15;
+                  return (
+                    <div key={med.id} className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/5">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-white/80">{med.name}</span>
+                        <span className="text-[10px] text-white/40 flex items-center gap-1">
+                          <AlertTriangle size={10} />
+                          {daysLeft} days left
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => onRestore(med.id)}
+                          className="p-2 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-xl transition-colors"
+                          title="Restore"
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (window.confirm(`Permanently delete ${med.name}?`)) {
+                              onPermanentDelete(med.id);
+                            }
+                          }}
+                          className="p-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-xl transition-colors"
+                          title="Delete Permanently"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-[10px] text-white/30 px-1">
+              Items are kept for 15 days before being permanently deleted.
+            </p>
+          </section>
+
           {/* Email Notifications */}
           <section className="space-y-4">
             <div className="flex items-center justify-between">
@@ -86,7 +149,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={() => setEmailNotificationsEnabled(!emailNotificationsEnabled)}
                 className={`w-12 h-6 rounded-full transition-all relative ${emailNotificationsEnabled ? 'bg-accent' : 'bg-white/10'}`}
               >
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${emailNotificationsEnabled ? 'left-7' : 'left-1'}`} />
+                <div 
+                  className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${emailNotificationsEnabled ? 'left-7' : 'left-1'}`} 
+                  style={{ backgroundColor: emailNotificationsEnabled ? '#ffffff' : '' }}
+                />
               </button>
             </div>
             <p className="text-[10px] text-white/30 px-1">
@@ -105,7 +171,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={() => setBrowserNotificationsEnabled(!browserNotificationsEnabled)}
                 className={`w-12 h-6 rounded-full transition-all relative ${browserNotificationsEnabled ? 'bg-accent' : 'bg-white/10'}`}
               >
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${browserNotificationsEnabled ? 'left-7' : 'left-1'}`} />
+                <div 
+                  className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${browserNotificationsEnabled ? 'left-7' : 'left-1'}`} 
+                  style={{ backgroundColor: browserNotificationsEnabled ? '#ffffff' : '' }}
+                />
               </button>
             </div>
             <p className="text-[10px] text-white/30 px-1">
@@ -156,6 +225,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </section>
 
+          {/* Theme Settings */}
+          <section className="space-y-4">
+            <div className="flex items-center gap-2 text-white/60">
+              <Palette size={18} />
+              <h3 className="text-sm font-bold uppercase tracking-widest">App Theme</h3>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {(['light', 'dark', 'system'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTheme(t)}
+                  className={`py-3 rounded-2xl border transition-all text-xs font-bold capitalize ${
+                    theme === t 
+                      ? 'bg-accent text-black border-accent' 
+                      : 'bg-white/5 text-white/40 border-white/10 hover:border-white/30'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </section>
+
           {/* Accent Color */}
           <section className="space-y-4">
             <div className="flex items-center gap-2 text-white/60">
@@ -172,10 +264,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   }`}
                   style={{ backgroundColor: color.value }}
                 >
-                  {accentColor === color.value && <div className="w-2 h-2 bg-black rounded-full" />}
+                  {accentColor === color.value && (
+                    <div 
+                      className="w-2 h-2 rounded-full" 
+                      style={{ backgroundColor: color.value === '#ffffff' ? '#000000' : '#ffffff' }} 
+                    />
+                  )}
                 </button>
               ))}
             </div>
+          </section>
+
+          {/* Cookie Preferences */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-white/60">
+                <ShieldAlert size={18} />
+                <h3 className="text-sm font-bold uppercase tracking-widest">Cookie Preferences</h3>
+              </div>
+              <button 
+                onClick={() => {
+                  const newConsent = !cookieConsent;
+                  setCookieConsent(newConsent);
+                  localStorage.setItem('mediscan_cookie_consent', newConsent ? 'granted' : 'denied');
+                  if (typeof window !== 'undefined' && (window as any).gtag) {
+                    (window as any).gtag('consent', 'update', {
+                      'ad_storage': newConsent ? 'granted' : 'denied',
+                      'ad_user_data': newConsent ? 'granted' : 'denied',
+                      'ad_personalization': newConsent ? 'granted' : 'denied',
+                      'analytics_storage': newConsent ? 'granted' : 'denied'
+                    });
+                  }
+                }}
+                className={`w-12 h-6 rounded-full transition-all relative ${cookieConsent ? 'bg-accent' : 'bg-white/10'}`}
+              >
+                <div 
+                  className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${cookieConsent ? 'left-7' : 'left-1'}`} 
+                  style={{ backgroundColor: cookieConsent ? '#ffffff' : '' }}
+                />
+              </button>
+            </div>
+            <p className="text-[10px] text-white/30 px-1">
+              Allow cookies for analytics and personalized content. You can change this at any time.
+            </p>
           </section>
 
           {/* Data Management */}

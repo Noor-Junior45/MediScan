@@ -7,3 +7,94 @@
 :root {
   --accent-color: #ffffff;
 }
+
+/* Light Mode Overrides */
+html:not(.dark) {
+  background-color: #f5f5f5;
+  color: #111827;
+}
+
+html:not(.dark) .bg-\[\#0a0a0a\] {
+  background-color: #f5f5f5 !important;
+}
+
+html:not(.dark) .bg-\[\#1a1a1a\] {
+  background-color: #ffffff !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+}
+
+html:not(.dark) .text-white {
+  color: #111827 !important;
+}
+
+html:not(.dark) .text-white\/20,
+html:not(.dark) .text-white\/30,
+html:not(.dark) .text-white\/40,
+html:not(.dark) .text-white\/50,
+html:not(.dark) .text-white\/60,
+html:not(.dark) .text-white\/70,
+html:not(.dark) .text-white\/80,
+html:not(.dark) .text-white\/90 {
+  color: #4b5563 !important;
+}
+
+html:not(.dark) .bg-white {
+  background-color: #111827 !important;
+  color: #ffffff !important;
+}
+
+html:not(.dark) .text-black {
+  color: #ffffff !important;
+}
+
+html:not(.dark) .bg-white\/5,
+html:not(.dark) .bg-white\/10,
+html:not(.dark) .bg-white\/20 {
+  background-color: #f3f4f6 !important;
+  color: #111827 !important;
+}
+
+html:not(.dark) input.bg-white\/5,
+html:not(.dark) textarea.bg-white\/5 {
+  background-color: #ffffff !important;
+}
+
+html:not(.dark) .bg-black {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+
+html:not(.dark) .bg-black\/40,
+html:not(.dark) .bg-black\/80 {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+}
+
+html:not(.dark) .border-white\/5,
+html:not(.dark) .border-white\/10,
+html:not(.dark) .border-white\/20 {
+  border-color: #e5e7eb !important;
+}
+
+html:not(.dark) .border-white {
+  border-color: #111827 !important;
+}
+
+html:not(.dark) .border-white\/30,
+html:not(.dark) .border-white\/40,
+html:not(.dark) .border-white\/50 {
+  border-color: #d1d5db !important;
+}
+
+html:not(.dark) .placeholder\:text-white\/20::placeholder {
+  color: #9ca3af !important;
+}
+
+html:not(.dark) .from-white {
+  --tw-gradient-from: #111827 !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+html:not(.dark) .to-white\/40 {
+  --tw-gradient-to: #6b7280 !important;
+}
+
