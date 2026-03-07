@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
 import { Medicine } from '../types';
-import { Calendar, Package, ChevronRight, AlertCircle, CheckCircle2, Pill, AlertTriangle, XCircle, Clock, Trash2, CheckSquare, Square } from 'lucide-react';
+import { Calendar, Package, ChevronRight, AlertCircle, CheckCircle2, Pill, AlertTriangle, XCircle, Clock, Trash2, CheckSquare, Square, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface MedicineListProps {
   medicines: Medicine[];
   onEdit: (medicine: Medicine) => void;
   onToggleTaken: (medicine: Medicine) => void;
+  onReduceQuantity: (medicine: Medicine) => void;
   onDeleteMultiple: (ids: string[]) => void;
   lowQuantityThreshold: number;
   alertThreshold: number;
 }
 
-export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, onToggleTaken, onDeleteMultiple, lowQuantityThreshold, alertThreshold }) => {
+export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, onToggleTaken, onReduceQuantity, onDeleteMultiple, lowQuantityThreshold, alertThreshold }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -238,6 +239,18 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
               </div>
               {!isSelectionMode && (
                 <div className="flex items-center gap-2">
+                  {!med.taken && med.quantity !== undefined && med.quantity > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onReduceQuantity(med);
+                      }}
+                      className="p-2 bg-white/5 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-all"
+                      title="Reduce quantity"
+                    >
+                      <Minus size={18} />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

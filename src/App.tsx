@@ -27,6 +27,7 @@ export default function App() {
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractionError, setExtractionError] = useState<string | null>(null);
+  const [extractionWarning, setExtractionWarning] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'expired' | 'expiring_soon' | 'expiring_3_months'>('all');
   const [sortOrder, setSortOrder] = useState<'default' | 'asc' | 'desc'>('default');
@@ -203,11 +204,13 @@ export default function App() {
 
   const handleAddManual = () => {
     setEditingMedicine(null);
+    setExtractionWarning(null);
     setIsFormOpen(true);
   };
 
   const handleEdit = (medicine: Medicine) => {
     setEditingMedicine(medicine);
+    setExtractionWarning(null);
     setIsFormOpen(true);
   };
 
@@ -277,6 +280,7 @@ export default function App() {
       }
       setIsFormOpen(false);
       setEditingMedicine(null);
+      setExtractionWarning(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'medicines');
     }
@@ -291,6 +295,7 @@ export default function App() {
       });
       setIsFormOpen(false);
       setEditingMedicine(null);
+      setExtractionWarning(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'medicines');
     }
@@ -333,6 +338,34 @@ export default function App() {
     }
   };
 
+  const handleReduceQuantity = async (medicine: Medicine) => {
+    if (!user || medicine.quantity === undefined || medicine.quantity <= 0) return;
+    try {
+      const newQuantity = medicine.quantity - 1;
+      const isFinished = newQuantity === 0;
+      const medRef = doc(db, 'medicines', medicine.id);
+      
+      const updateData: any = { quantity: newQuantity };
+      if (isFinished) {
+        updateData.taken = true;
+      }
+      
+      await setDoc(medRef, updateData, { merge: true });
+
+      const historyId = crypto.randomUUID();
+      await setDoc(doc(db, `medicines/${medicine.id}/history`, historyId), {
+        id: historyId,
+        medicineId: medicine.id,
+        userId: user.uid,
+        timestamp: Date.now(),
+        actionType: 'EDIT',
+        details: `Quantity reduced to ${newQuantity}${isFinished ? ' (Marked as finished)' : ''}`
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'medicines');
+    }
+  };
+
   const handleClearData = async () => {
     if (!user) return;
     setShowClearConfirm(true);
@@ -364,6 +397,7 @@ export default function App() {
   const handleCapture = async (base64: string) => {
     setIsProcessing(true);
     setExtractionError(null);
+    setExtractionWarning(null);
     const result = await extractMedicineData(base64);
     setIsProcessing(false);
     
@@ -380,6 +414,9 @@ export default function App() {
       };
       // We don't save immediately, we let user verify in form
       setEditingMedicine(tempMed as Medicine);
+      if (result.warningMessage) {
+        setExtractionWarning(result.warningMessage);
+      }
       setIsCameraOpen(false);
       setIsFormOpen(true);
     } else {
@@ -739,6 +776,7 @@ export default function App() {
           medicines={filteredMedicines} 
           onEdit={handleEdit} 
           onToggleTaken={handleToggleTaken}
+          onReduceQuantity={handleReduceQuantity}
           onDeleteMultiple={handleDeleteMultiple}
           lowQuantityThreshold={lowQuantityThreshold}
           alertThreshold={alertThreshold}
@@ -844,9 +882,11 @@ export default function App() {
             medicine={editingMedicine}
             onSave={handleSave}
             onDelete={handleDelete}
+            extractionWarning={extractionWarning}
             onClose={() => {
               setIsFormOpen(false);
               setEditingMedicine(null);
+              setExtractionWarning(null);
             }}
           />
         )}

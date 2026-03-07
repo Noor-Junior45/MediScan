@@ -9,9 +9,10 @@ interface MedicineFormProps {
   onSave: (medicine: Partial<Medicine>) => void;
   onDelete?: (id: string) => void;
   onClose: () => void;
+  extractionWarning?: string | null;
 }
 
-export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, onDelete, onClose }) => {
+export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, onDelete, onClose, extractionWarning }) => {
   const [formData, setFormData] = useState<Partial<Medicine>>({
     name: '',
     dosage: '',
@@ -160,6 +161,15 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
                     </div>
                     <p className="mt-2 text-[10px] text-white/30 text-center uppercase tracking-widest font-medium">
                       Check the photo to verify AI extraction
+                    </p>
+                  </div>
+                )}
+
+                {extractionWarning && (
+                  <div className="mx-6 mt-6 p-4 rounded-2xl bg-yellow-500/10 border border-yellow-500/20 flex items-start gap-3">
+                    <AlertTriangle className="text-yellow-500 shrink-0 mt-0.5" size={16} />
+                    <p className="text-xs text-yellow-200/80 leading-relaxed">
+                      {extractionWarning}
                     </p>
                   </div>
                 )}
