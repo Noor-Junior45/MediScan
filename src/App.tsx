@@ -11,16 +11,10 @@ import { extractMedicineData } from './services/geminiService';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, 
   collection, doc, setDoc, deleteDoc, updateDoc, writeBatch, onSnapshot, query, where, orderBy, getDoc, getDocs, User,
-  handleFirestoreError, OperationType, deleteField
+  handleFirestoreError, OperationType, deleteField, signInWithEmailAndPassword, createUserWithEmailAndPassword
 } from './firebase';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import localforage from 'localforage';
-
-// Configure localforage
-localforage.config({
-  name: 'Mediscan',
-  storeName: 'medicine_images'
-});
+import { AdBanner } from './components/AdBanner';
 
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 
@@ -46,6 +40,10 @@ export default function App() {
   const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isEmailLoginOpen, setIsEmailLoginOpen] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
 
   // Auth State Listener
   useEffect(() => {
@@ -207,14 +205,64 @@ export default function App() {
   const handleLogin = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === 'auth/popup-closed-by-user') {
+        // Silently handle popup closure
+        return;
+      }
       console.error("Login Error:", error);
+      setAlertMessage('Failed to sign in with Google. Please try again.');
+    }
+  };
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error: any) {
+      console.error('Email login error:', error);
+      if (error.code === 'auth/invalid-credential') {
+        setAlertMessage('Invalid email or password. Please check your credentials or sign up if you don\'t have an account.');
+      } else if (error.code === 'auth/user-disabled') {
+        setAlertMessage('This account has been disabled.');
+      } else {
+        setAlertMessage('An error occurred during login. Please try again.');
+      }
+    }
+  };
+
+  const handleEmailSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 6) {
+      setAlertMessage('Password must be at least 6 characters long.');
+      return;
+    }
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+    } catch (error: any) {
+      console.error('Email sign up error:', error);
+      if (error.code === 'auth/email-already-in-use') {
+        setAlertMessage('This email is already in use. Please try logging in instead.');
+      } else if (error.code === 'auth/invalid-email') {
+        setAlertMessage('Please enter a valid email address.');
+      } else if (error.code === 'auth/weak-password') {
+        setAlertMessage('The password is too weak.');
+      } else {
+        setAlertMessage('An error occurred during sign up. Please try again.');
+      }
     }
   };
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      // Reset UI states on logout
+      setIsSettingsOpen(false);
+      setIsEmailLoginOpen(false);
+      setIsSignUp(false);
+      setIsCameraOpen(false);
+      setIsFormOpen(false);
+      setIsGuideOpen(false);
     } catch (error) {
       console.error("Logout Error:", error);
     }
@@ -228,14 +276,7 @@ export default function App() {
 
   const handleEdit = async (medicine: Medicine) => {
     setExtractionWarning(null);
-    
-    try {
-      const image = await localforage.getItem<string>(`image_${medicine.id}`);
-      setEditingMedicine({ ...medicine, capturedImage: image || undefined });
-    } catch (e) {
-      setEditingMedicine(medicine);
-    }
-    
+    setEditingMedicine(medicine);
     setIsFormOpen(true);
   };
 
@@ -265,6 +306,10 @@ export default function App() {
           userId: user.uid
         };
 
+        if (capturedImage) {
+          updateData.capturedImage = capturedImage;
+        }
+
         if (existingMed.dosage === 'N/A' && firestoreData.dosage) {
           updateData.dosage = firestoreData.dosage;
         }
@@ -273,10 +318,6 @@ export default function App() {
         }
 
         await setDoc(medRef, updateData, { merge: true });
-
-        if (capturedImage) {
-          await localforage.setItem(`image_${existingMed.id}`, capturedImage);
-        }
 
         const historyId = crypto.randomUUID();
         await setDoc(doc(db, `medicines/${existingMed.id}/history`, historyId), {
@@ -290,14 +331,14 @@ export default function App() {
 
         if (editingMedicine && editingMedicine.id) {
           await deleteDoc(doc(db, 'medicines', editingMedicine.id));
-          await localforage.removeItem(`image_${editingMedicine.id}`);
         }
       } else if (editingMedicine && editingMedicine.id) {
         const medRef = doc(db, 'medicines', editingMedicine.id);
         const updateData: any = { ...editingMedicine, ...firestoreData, userId: user.uid };
         
-        // Ensure capturedImage is not saved to Firestore
-        delete updateData.capturedImage;
+        if (capturedImage) {
+          updateData.capturedImage = capturedImage;
+        }
 
         Object.keys(updateData).forEach(key => {
           if (updateData[key] === undefined) {
@@ -305,11 +346,6 @@ export default function App() {
           }
         });
         await setDoc(medRef, updateData, { merge: true });
-        
-        // Save image locally if provided
-        if (capturedImage) {
-          await localforage.setItem(`image_${editingMedicine.id}`, capturedImage);
-        }
         
         // Log history
         const changes: string[] = [];
@@ -343,6 +379,7 @@ export default function App() {
           userId: user.uid,
           form: firestoreData.form || 'other',
           ...(firestoreData.quantity !== undefined ? { quantity: firestoreData.quantity } : {}),
+          ...(capturedImage ? { capturedImage } : {}),
         };
         Object.keys(newMed).forEach(key => {
           if (newMed[key] === undefined) {
@@ -350,11 +387,6 @@ export default function App() {
           }
         });
         await setDoc(doc(db, 'medicines', id), newMed);
-
-        // Save image locally if provided
-        if (capturedImage) {
-          await localforage.setItem(`image_${id}`, capturedImage);
-        }
 
         // Log creation history
         const historyId = crypto.randomUUID();
@@ -702,9 +734,6 @@ export default function App() {
       batch.delete(doc(db, 'medicines', id));
       
       await batch.commit();
-      
-      // Remove local image
-      await localforage.removeItem(`image_${id}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'medicines');
     }
@@ -823,6 +852,77 @@ export default function App() {
               <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-6 h-6" />
               Sign in with Google
             </button>
+
+            <div className="pt-4">
+              <button 
+                onClick={() => {
+                  setIsEmailLoginOpen(!isEmailLoginOpen);
+                  setIsSignUp(false);
+                }}
+                className="text-white/40 text-xs hover:text-white transition-colors underline underline-offset-4"
+              >
+                {isEmailLoginOpen ? 'Hide Email Login' : 'Sign in with Email & Password'}
+              </button>
+              
+              {isEmailLoginOpen && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-6 space-y-4 bg-white/[0.02] border border-white/10 rounded-[32px] p-6"
+                >
+                  <div className="flex gap-2 p-1 bg-white/5 rounded-2xl mb-2">
+                    <button 
+                      onClick={() => setIsSignUp(false)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${!isSignUp ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
+                    >
+                      Login
+                    </button>
+                    <button 
+                      onClick={() => setIsSignUp(true)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${isSignUp ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
+                    >
+                      Sign Up
+                    </button>
+                  </div>
+
+                  <form onSubmit={isSignUp ? handleEmailSignUp : handleEmailLogin} className="space-y-3">
+                    <input 
+                      id="auth-email"
+                      name="email"
+                      type="email" 
+                      placeholder="Email Address"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 focus:outline-none focus:border-white/30 transition-all text-sm"
+                      required
+                    />
+                    <input 
+                      id="auth-password"
+                      name="password"
+                      type="password" 
+                      placeholder="Password (min. 6 chars)"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 focus:outline-none focus:border-white/30 transition-all text-sm"
+                      required
+                    />
+                    <button 
+                      id="auth-submit-btn"
+                      type="submit"
+                      className="w-full py-4 bg-white text-black rounded-xl font-bold text-sm hover:bg-white/90 transition-all shadow-lg"
+                    >
+                      {isSignUp ? 'Create Account' : 'Sign In'}
+                    </button>
+                  </form>
+                  
+                  <p className="text-[10px] text-white/30 text-center leading-relaxed">
+                    {isSignUp 
+                      ? 'By creating an account, you agree to store your medicine data securely in our cloud vault.' 
+                      : 'Welcome back! Your data will sync automatically.'}
+                  </p>
+                </motion.div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -973,6 +1073,7 @@ export default function App() {
           lowQuantityThreshold={lowQuantityThreshold}
           alertThreshold={alertThreshold}
         />
+        <AdBanner slot="7890123456" />
       </main>
 
       {/* Floating Action Bar */}

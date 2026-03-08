@@ -1,7 +1,6 @@
 import React from 'react';
 import { X, Trash2, Bell, Palette, ShieldAlert, LogOut, Mail, RotateCcw, AlertTriangle } from 'lucide-react';
 import { motion } from 'motion/react';
-import localforage from 'localforage';
 import { Medicine } from '../types';
 
 interface SettingsModalProps {
@@ -51,37 +50,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [showConfirmClear, setShowConfirmClear] = React.useState(false);
   const [cookieConsent, setCookieConsent] = React.useState(localStorage.getItem('mediscan_cookie_consent') !== 'denied');
-
-  const [storageUsed, setStorageUsed] = React.useState<string>('Calculating...');
-
-  React.useEffect(() => {
-    const calculateStorage = async () => {
-      try {
-        // Calculate size of medicines array
-        const dataString = JSON.stringify(medicines);
-        let totalBytes = new Blob([dataString]).size;
-        
-        // Calculate size of images in localforage
-        const keys = await localforage.keys();
-        for (const key of keys) {
-          if (key.startsWith('image_')) {
-            const item = await localforage.getItem<string>(key);
-            if (item) {
-              totalBytes += new Blob([item]).size;
-            }
-          }
-        }
-        
-        if (totalBytes < 1024) setStorageUsed(`${totalBytes} Bytes`);
-        else if (totalBytes < 1024 * 1024) setStorageUsed(`${(totalBytes / 1024).toFixed(2)} KB`);
-        else setStorageUsed(`${(totalBytes / (1024 * 1024)).toFixed(2)} MB`);
-      } catch (e) {
-        setStorageUsed('Unknown');
-      }
-    };
-    
-    calculateStorage();
-  }, [medicines]);
 
   const colors = [
     { name: 'Classic', value: '#ffffff' },
@@ -151,11 +119,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <RotateCcw size={14} />
                         </button>
                         <button 
-                          onClick={() => {
-                            if (window.confirm(`Permanently delete ${med.name}?`)) {
-                              onPermanentDelete(med.id);
-                            }
-                          }}
+                          onClick={() => onPermanentDelete(med.id)}
                           className="p-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-xl transition-colors"
                           title="Delete Permanently"
                         >
@@ -307,22 +271,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               ))}
             </div>
-          </section>
-
-          {/* Storage Used */}
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-white/60">
-                <ShieldAlert size={18} />
-                <h3 className="text-sm font-bold uppercase tracking-widest">Storage Used</h3>
-              </div>
-              <div className="text-white font-mono text-sm bg-white/10 px-3 py-1 rounded-full">
-                {storageUsed}
-              </div>
-            </div>
-            <p className="text-[10px] text-white/30 px-1">
-              Estimated storage space used by your medicines and history data.
-            </p>
           </section>
 
           {/* Cookie Preferences */}

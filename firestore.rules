@@ -46,7 +46,7 @@ service cloud.firestore {
              data.userId == request.auth.uid &&
              data.createdAt is number &&
              (!('usageInstructions' in data) || (data.usageInstructions is string && data.usageInstructions.size() < 2000)) &&
-             (!('capturedImage' in data) || (data.capturedImage is string && data.capturedImage.size() < 2000000)) &&
+             (!('capturedImage' in data) || (data.capturedImage is string && data.capturedImage.size() < 800000)) &&
              (!('taken' in data) || data.taken is bool) &&
              (!('quantity' in data) || (data.quantity is number && data.quantity >= 0)) &&
              (!('isDeleted' in data) || data.isDeleted is bool) &&
