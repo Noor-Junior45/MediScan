@@ -7,7 +7,7 @@ export interface MedicineHistory {
   details: string;
 }
 
-export type MedicineForm = 'tablet' | 'capsule' | 'syrup' | 'ampule' | 'powder' | 'other';
+export type MedicineForm = 'tablet' | 'capsule' | 'syrup' | 'ampule' | 'powder' | 'tape' | 'liquid' | 'other';
 
 export interface Medicine {
   id: string;

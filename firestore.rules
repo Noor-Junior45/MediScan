@@ -51,7 +51,7 @@ service cloud.firestore {
              (!('quantity' in data) || (data.quantity is number && data.quantity >= 0)) &&
              (!('isDeleted' in data) || data.isDeleted is bool) &&
              (!('deletedAt' in data) || data.deletedAt == null || data.deletedAt is number) &&
-             (!('form' in data) || (data.form in ['tablet', 'capsule', 'syrup', 'ampule', 'powder', 'other']));
+             (!('form' in data) || (data.form in ['tablet', 'capsule', 'syrup', 'ampule', 'powder', 'tape', 'liquid', 'other']));
     }
 
     function isValidUserConfig(data) {

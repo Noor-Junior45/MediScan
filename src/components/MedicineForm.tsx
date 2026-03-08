@@ -192,20 +192,20 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
 
                   <div className="space-y-1.5">
                     <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Medicine Form</label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-4 gap-2">
                       {(Object.keys(MEDICINE_FORM_ICONS) as MedicineFormType[]).map((form) => (
                         <button
                           key={form}
                           type="button"
                           onClick={() => setFormData({ ...formData, form })}
-                          className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all gap-1 ${
+                          className={`flex flex-col items-center justify-center p-2 rounded-2xl border transition-all gap-1 ${
                             formData.form === form 
                               ? 'bg-white/10 border-white/40 text-white' 
                               : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
                           }`}
                         >
                           {MEDICINE_FORM_ICONS[form]}
-                          <span className="text-[9px] font-bold uppercase tracking-widest">{MEDICINE_FORM_LABELS[form]}</span>
+                          <span className="text-[8px] font-bold uppercase tracking-widest truncate w-full text-center">{MEDICINE_FORM_LABELS[form]}</span>
                         </button>
                       ))}
                     </div>

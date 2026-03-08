@@ -553,7 +553,7 @@ export default function App() {
           const expirationDateRaw = row['Expiration Date'] || row['expirationDate'] || row['expiration_date'] || row['Expiry Date'] || row['expiryDate'] || row['expiry_date'];
           const usageInstructions = row['Usage Instructions'] || row['usageInstructions'] || row['usage_instructions'] || row['Notes'] || row['notes'] || '';
           const form = (row['Form'] || row['form'] || 'other').toLowerCase();
-          const validForm = ['tablet', 'capsule', 'syrup', 'ampule', 'powder', 'other'].includes(form) ? form : 'other';
+          const validForm = ['tablet', 'capsule', 'syrup', 'ampule', 'powder', 'tape', 'liquid', 'other'].includes(form) ? form : 'other';
 
           if (name && expirationDateRaw) {
             let expirationDate = expirationDateRaw;
@@ -880,8 +880,17 @@ export default function App() {
               placeholder="Search by name, dosage, or instructions..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20 text-sm"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-12 focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20 text-sm"
             />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-4 flex items-center text-white/20 hover:text-white/60 transition-colors"
+                title="Clear search"
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
         </div>
       </header>
