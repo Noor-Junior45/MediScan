@@ -3,6 +3,8 @@ import { Medicine, MedicineHistory } from '../types';
 import { X, Save, Trash2, Eye, AlertTriangle, History, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, collection, query, orderBy, onSnapshot, handleFirestoreError, OperationType } from '../firebase';
+import { MEDICINE_FORM_ICONS, MEDICINE_FORM_LABELS } from '../constants';
+import { MedicineForm as MedicineFormType } from '../types';
 
 interface MedicineFormProps {
   medicine?: Medicine | null;
@@ -10,9 +12,10 @@ interface MedicineFormProps {
   onDelete?: (id: string) => void;
   onClose: () => void;
   extractionWarning?: string | null;
+  isSaving?: boolean;
 }
 
-export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, onDelete, onClose, extractionWarning }) => {
+export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, onDelete, onClose, extractionWarning, isSaving }) => {
   const [formData, setFormData] = useState<Partial<Medicine>>({
     name: '',
     dosage: '',
@@ -182,45 +185,66 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
                       type="text"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20"
+                      className="w-full bg-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20"
                       placeholder="e.g. Paracetamol"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Dosage</label>
-                      <input
-                        required
-                        type="text"
-                        value={formData.dosage}
-                        onChange={(e) => setFormData({ ...formData, dosage: e.target.value })}
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20"
-                        placeholder="e.g. 500mg"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Quantity</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={formData.quantity === undefined ? '' : formData.quantity}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === '') {
-                            setFormData({ ...formData, quantity: undefined });
-                          } else {
-                            const parsed = parseInt(val, 10);
-                            if (!isNaN(parsed) && parsed >= 0) {
-                              setFormData({ ...formData, quantity: parsed });
-                            }
-                          }
-                        }}
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20"
-                        placeholder="e.g. 30"
-                      />
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Medicine Form</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(Object.keys(MEDICINE_FORM_ICONS) as MedicineFormType[]).map((form) => (
+                        <button
+                          key={form}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, form })}
+                          className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all gap-1 ${
+                            formData.form === form 
+                              ? 'bg-white/10 border-white/40 text-white' 
+                              : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
+                          }`}
+                        >
+                          {MEDICINE_FORM_ICONS[form]}
+                          <span className="text-[9px] font-bold uppercase tracking-widest">{MEDICINE_FORM_LABELS[form]}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Dosage</label>
+                        <input
+                          required
+                          type="text"
+                          value={formData.dosage}
+                          onChange={(e) => setFormData({ ...formData, dosage: e.target.value })}
+                          className="w-full bg-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20"
+                          placeholder="e.g. 500mg"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Quantity</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.quantity === undefined ? '' : formData.quantity}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setFormData({ ...formData, quantity: undefined });
+                            } else {
+                              const parsed = parseInt(val, 10);
+                              if (!isNaN(parsed) && parsed >= 0) {
+                                setFormData({ ...formData, quantity: parsed });
+                              }
+                            }
+                          }}
+                          className="w-full bg-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20"
+                          placeholder="e.g. 30"
+                        />
+                      </div>
+                    </div>
 
                   <div className="space-y-1.5 relative">
                     <label className="text-[10px] uppercase tracking-[0.2em] text-orange-400 font-bold ml-1 flex items-center gap-1">
@@ -240,15 +264,15 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
                     </p>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Usage Instructions</label>
-                    <textarea
-                      value={formData.usageInstructions}
-                      onChange={(e) => setFormData({ ...formData, usageInstructions: e.target.value })}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20 min-h-[80px]"
-                      placeholder="e.g. Take 1 tablet after meals..."
-                    />
-                  </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Usage Instructions</label>
+                      <textarea
+                        value={formData.usageInstructions}
+                        onChange={(e) => setFormData({ ...formData, usageInstructions: e.target.value })}
+                        className="w-full bg-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20 min-h-[80px]"
+                        placeholder="e.g. Take 1 tablet after meals..."
+                      />
+                    </div>
                 </form>
               </motion.div>
             )}
@@ -270,10 +294,15 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
             <button
               type="submit"
               form="medicine-form"
-              className="flex-[2] py-4 bg-white text-black rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-white/90 transition-all shadow-[0_10px_20px_rgba(255,255,255,0.1)]"
+              disabled={isSaving}
+              className={`flex-[2] py-4 rounded-2xl font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_10px_20px_rgba(255,255,255,0.1)] ${isSaving ? 'bg-white/50 text-black/50 cursor-not-allowed' : 'bg-white text-black hover:bg-white/90'}`}
             >
-              <Save size={18} />
-              Save Medicine
+              {isSaving ? (
+                <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+              ) : (
+                <Save size={18} />
+              )}
+              {isSaving ? 'Saving...' : 'Save Medicine'}
             </button>
           </div>
         )}

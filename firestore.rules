@@ -34,7 +34,7 @@ service cloud.firestore {
 
     function isValidMedicine(data) {
       let requiredFields = ['id', 'name', 'dosage', 'expirationDate', 'userId', 'createdAt'];
-      let optionalFields = ['usageInstructions', 'capturedImage', 'taken', 'quantity', 'isDeleted', 'deletedAt'];
+      let optionalFields = ['usageInstructions', 'capturedImage', 'taken', 'quantity', 'isDeleted', 'deletedAt', 'form'];
       let allFields = requiredFields.concat(optionalFields);
       
       return data.keys().hasAll(requiredFields) &&
@@ -50,7 +50,8 @@ service cloud.firestore {
              (!('taken' in data) || data.taken is bool) &&
              (!('quantity' in data) || (data.quantity is number && data.quantity >= 0)) &&
              (!('isDeleted' in data) || data.isDeleted is bool) &&
-             (!('deletedAt' in data) || data.deletedAt == null || data.deletedAt is number);
+             (!('deletedAt' in data) || data.deletedAt == null || data.deletedAt is number) &&
+             (!('form' in data) || (data.form in ['tablet', 'capsule', 'syrup', 'ampule', 'powder', 'other']));
     }
 
     function isValidUserConfig(data) {

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Medicine } from '../types';
 import { Calendar, Package, ChevronRight, AlertCircle, CheckCircle2, Pill, AlertTriangle, XCircle, Clock, Trash2, CheckSquare, Square, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { MEDICINE_FORM_ICONS } from '../constants';
 
 interface MedicineListProps {
   medicines: Medicine[];
@@ -54,15 +55,15 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
   };
 
   const getExpiryStatus = (dateStr: string) => {
-    const expiry = new Date(dateStr);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    // Handle dateStr which might be YYYY-MM-DD (parsed as UTC)
-    // We want to treat it as local time midnight
     const [year, month, day] = dateStr.split('-').map(Number);
+    const expiry = new Date();
     if (year && month && day) {
       expiry.setFullYear(year, month - 1, day);
+    } else {
+      return { label: 'Invalid Date', color: 'text-gray-500', bg: 'bg-gray-500/10', Icon: Clock };
     }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     expiry.setHours(0, 0, 0, 0);
     
     const diffTime = expiry.getTime() - today.getTime();
@@ -142,13 +143,13 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
 
       {medicines.map((med, index) => {
         const status = getExpiryStatus(med.expirationDate);
-        const expiry = new Date(med.expirationDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
         const [year, month, day] = med.expirationDate.split('-').map(Number);
+        const expiry = new Date();
         if (year && month && day) {
           expiry.setFullYear(year, month - 1, day);
         }
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
         expiry.setHours(0, 0, 0, 0);
         
         const diffTime = expiry.getTime() - today.getTime();
@@ -192,16 +193,16 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
                 onEdit(med);
               }
             }}
-            className={`w-full text-left group relative overflow-hidden border rounded-3xl p-5 transition-all ${
+            className={`w-full text-left group relative overflow-hidden border rounded-3xl p-5 transition-all backdrop-blur-md ${
               isSelectionMode ? 'cursor-pointer' : ''
             } ${
               isSelected ? 'bg-white/10 border-white/40' :
               med.taken ? 'bg-white/5 border-white/5 grayscale' :
-              isExpired ? 'bg-white/5 border-red-500/30 hover:border-red-500/50 hover:bg-white/[0.08]' :
-              isExpiringSoon ? 'bg-white/5 border-orange-500/30 hover:border-orange-500/50 hover:bg-white/[0.08]' :
-              isExpiringAlert ? 'bg-white/5 border-yellow-500/30 hover:border-yellow-500/50 hover:bg-white/[0.08]' :
-              isLowQuantity ? 'bg-white/5 border-yellow-500/30 hover:border-yellow-500/50 hover:bg-white/[0.08]' :
-              'bg-white/5 border-white/10 hover:border-white/20 hover:bg-white/[0.08]'
+              isExpired ? 'bg-white/[0.01] border-red-500/30 hover:border-red-500/50 hover:bg-white/[0.04]' :
+              isExpiringSoon ? 'bg-white/[0.01] border-orange-500/30 hover:border-orange-500/50 hover:bg-white/[0.04]' :
+              isExpiringAlert ? 'bg-white/[0.01] border-yellow-500/30 hover:border-yellow-500/50 hover:bg-white/[0.04]' :
+              isLowQuantity ? 'bg-white/[0.01] border-yellow-500/30 hover:border-yellow-500/50 hover:bg-white/[0.04]' :
+              'bg-white/[0.01] border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
             }`}
           >
             <div className="flex justify-between items-start mb-3">
@@ -212,8 +213,9 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
                   </div>
                 )}
                 <div className={`flex-1 ${med.taken && !isSelectionMode ? 'cursor-default' : 'cursor-pointer'}`}>
-                  <h3 className={`font-semibold text-lg tracking-tight transition-colors ${med.taken ? 'text-white/40 line-through' : 'text-white group-hover:text-white'}`}>
+                  <h3 className={`font-semibold text-lg tracking-tight transition-colors flex items-center gap-2 ${med.taken ? 'text-white/40 line-through' : 'text-white group-hover:text-white'}`}>
                     {med.name}
+                    {med.form && MEDICINE_FORM_ICONS[med.form]}
                   </h3>
                   <div className="flex items-center gap-3 mt-1 flex-wrap">
                     <span className="flex items-center gap-1.5 text-white/40 text-xs">
@@ -287,7 +289,7 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
             <div className={`flex items-center gap-2 text-white/60 text-sm ${isSelectionMode ? 'pl-8' : ''}`}>
               <Calendar size={14} className="text-white/30" />
               <span className={`font-mono text-xs tracking-wider ${med.taken ? 'line-through opacity-50' : ''}`}>
-                Exp: {new Date(med.expirationDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                Exp: {expiry.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
             </div>
 

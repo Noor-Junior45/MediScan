@@ -33,6 +33,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [extractionError, setExtractionError] = useState<string | null>(null);
   const [extractionWarning, setExtractionWarning] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,10 +126,12 @@ export default function App() {
       today.setHours(0, 0, 0, 0);
 
       const expiringMeds = medicines.filter(m => {
-        const expiry = new Date(m.expirationDate);
         const [year, month, day] = m.expirationDate.split('-').map(Number);
+        const expiry = new Date();
         if (year && month && day) {
           expiry.setFullYear(year, month - 1, day);
+        } else {
+          return false;
         }
         expiry.setHours(0, 0, 0, 0);
         
@@ -237,7 +240,8 @@ export default function App() {
   };
 
   const handleSave = async (data: Partial<Medicine>) => {
-    if (!user) return;
+    if (!user || isSaving) return;
+    setIsSaving(true);
 
     try {
       const { capturedImage, ...firestoreData } = data;
@@ -313,6 +317,7 @@ export default function App() {
         if (editingMedicine.expirationDate !== data.expirationDate) changes.push(`Expiration date updated to ${data.expirationDate}`);
         if (editingMedicine.dosage !== data.dosage) changes.push(`Dosage updated to ${data.dosage}`);
         if (editingMedicine.name !== data.name) changes.push(`Name updated to ${data.name}`);
+        if (editingMedicine.form !== data.form) changes.push(`Form updated to ${data.form}`);
         
         if (changes.length > 0) {
           const historyId = crypto.randomUUID();
@@ -336,6 +341,7 @@ export default function App() {
           usageInstructions: firestoreData.usageInstructions || '',
           createdAt: Date.now(),
           userId: user.uid,
+          form: firestoreData.form || 'other',
           ...(firestoreData.quantity !== undefined ? { quantity: firestoreData.quantity } : {}),
         };
         Object.keys(newMed).forEach(key => {
@@ -366,6 +372,8 @@ export default function App() {
       setExtractionWarning(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'medicines');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -387,15 +395,19 @@ export default function App() {
   const handleDeleteMultiple = async (ids: string[]) => {
     if (!user) return;
     try {
-      const batch = writeBatch(db);
-      ids.forEach(id => {
-        const docRef = doc(db, 'medicines', id);
-        batch.update(docRef, {
-          isDeleted: true,
-          deletedAt: Date.now()
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+        const chunk = ids.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          const docRef = doc(db, 'medicines', id);
+          batch.update(docRef, {
+            isDeleted: true,
+            deletedAt: Date.now()
+          });
         });
-      });
-      await batch.commit();
+        await batch.commit();
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'medicines');
     }
@@ -450,15 +462,21 @@ export default function App() {
   };
 
   const confirmClearData = async () => {
-    if (!user) return;
+    if (!user || isSaving) return;
+    setIsSaving(true);
     try {
-      // In a real app, you'd use a batch or cloud function. 
-      // Here we'll just delete them one by one for simplicity in this demo environment.
-      for (const med of medicines) {
-        await handlePermanentDelete(med.id);
+      const CHUNK_SIZE = 100; // Smaller chunk for complex deletes (includes history)
+      const allMeds = [...medicines];
+      
+      for (let i = 0; i < allMeds.length; i += CHUNK_SIZE) {
+        const chunk = allMeds.slice(i, i + CHUNK_SIZE);
+        await Promise.all(chunk.map(med => handlePermanentDelete(med.id)));
       }
+      setAlertMessage("All data cleared successfully.");
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'medicines');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -472,6 +490,7 @@ export default function App() {
   };
 
   const handleCapture = async (base64: string) => {
+    if (isProcessing) return;
     setIsProcessing(true);
     setExtractionError(null);
     setExtractionWarning(null);
@@ -488,6 +507,7 @@ export default function App() {
         usageInstructions: result.medicine.usageInstructions || '',
         capturedImage: `data:image/jpeg;base64,${base64}`,
         ...(result.medicine.quantity !== undefined ? { quantity: result.medicine.quantity } : {}),
+        form: result.medicine.form || 'other',
       };
       // We don't save immediately, we let user verify in form
       setEditingMedicine(tempMed as Medicine);
@@ -532,6 +552,8 @@ export default function App() {
           const quantity = quantityRaw ? parseInt(quantityRaw, 10) : undefined;
           const expirationDateRaw = row['Expiration Date'] || row['expirationDate'] || row['expiration_date'] || row['Expiry Date'] || row['expiryDate'] || row['expiry_date'];
           const usageInstructions = row['Usage Instructions'] || row['usageInstructions'] || row['usage_instructions'] || row['Notes'] || row['notes'] || '';
+          const form = (row['Form'] || row['form'] || 'other').toLowerCase();
+          const validForm = ['tablet', 'capsule', 'syrup', 'ampule', 'powder', 'other'].includes(form) ? form : 'other';
 
           if (name && expirationDateRaw) {
             let expirationDate = expirationDateRaw;
@@ -541,9 +563,13 @@ export default function App() {
                 const d = new Date(expirationDateRaw);
                 if (!isNaN(d.getTime())) {
                   expirationDate = d.toISOString().split('T')[0];
+                } else {
+                  // Skip invalid dates
+                  continue;
                 }
               } catch (e) {
-                // Keep original, let validation fail if it's invalid
+                // Skip invalid dates
+                continue;
               }
             }
 
@@ -571,6 +597,7 @@ export default function App() {
                 usageInstructions,
                 createdAt: Date.now(),
                 userId: user.uid,
+                form: validForm,
                 ...(addQty > 0 ? { quantity: addQty } : {}),
               };
               newMedsMap.set(key, newMed);
@@ -580,16 +607,30 @@ export default function App() {
         }
         
         try {
+          // Process in chunks of 500 (Firestore batch limit)
+          const CHUNK_SIZE = 500;
+          
+          // Combine all operations
+          const allOperations: { type: 'set' | 'update', ref: any, data: any }[] = [];
+          
           for (const [id, newQty] of existingUpdates.entries()) {
-            batch.update(doc(db, 'medicines', id), { quantity: newQty });
+            allOperations.push({ type: 'update', ref: doc(db, 'medicines', id), data: { quantity: newQty } });
           }
           
           for (const newMed of newMedsMap.values()) {
-            batch.set(doc(db, 'medicines', newMed.id), newMed);
+            allOperations.push({ type: 'set', ref: doc(db, 'medicines', newMed.id), data: newMed });
           }
 
-          if (count > 0 || existingUpdates.size > 0) {
-            await batch.commit();
+          if (allOperations.length > 0) {
+            for (let i = 0; i < allOperations.length; i += CHUNK_SIZE) {
+              const chunk = allOperations.slice(i, i + CHUNK_SIZE);
+              const batch = writeBatch(db);
+              chunk.forEach(op => {
+                if (op.type === 'set') batch.set(op.ref, op.data);
+                else batch.update(op.ref, op.data);
+              });
+              await batch.commit();
+            }
             setAlertMessage(`Successfully imported ${count} new medicines and merged ${mergedCount} duplicates.`);
           } else {
             setAlertMessage("No valid medicines found to import.");
@@ -792,7 +833,7 @@ export default function App() {
     <ErrorBoundary>
       <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-white selection:text-black">
       {/* Glossy Header */}
-      <header className="sticky top-0 z-40 bg-black/40 backdrop-blur-2xl border-b border-white/5 px-4 py-4">
+      <header className="sticky top-0 z-40 bg-white/[0.01] backdrop-blur-3xl border-b border-white/5 px-4 py-4">
         <div className="max-w-2xl mx-auto space-y-4">
           <div className="flex justify-between items-center">
             <div>
@@ -848,11 +889,11 @@ export default function App() {
       <main className="max-w-2xl mx-auto pt-6 pb-32">
         {/* Stats / Info */}
         <div className="px-4 mb-6 grid grid-cols-2 gap-4">
-          <div className="bg-gradient-to-br from-white/[0.08] to-transparent border border-white/10 rounded-3xl p-6">
+          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-3xl p-6 shadow-lg ring-1 ring-white/5">
             <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold mb-1">Total Items</p>
             <p className="text-3xl font-bold tracking-tight">{medicines.length}</p>
           </div>
-          <div className="bg-gradient-to-br from-white/[0.08] to-transparent border border-white/10 rounded-3xl p-6">
+          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-3xl p-6 shadow-lg ring-1 ring-white/5">
             <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold mb-1">Expiring Soon</p>
             <p className="text-3xl font-bold tracking-tight text-orange-400">
               {medicines.filter(m => {
@@ -927,13 +968,11 @@ export default function App() {
 
       {/* Floating Action Bar */}
       <div className="fixed bottom-6 left-0 right-0 z-40 px-6">
-        <div className="max-w-[320px] mx-auto bg-black/40 backdrop-blur-3xl border border-white/10 rounded-full p-2 flex items-center justify-between shadow-2xl">
+        <div className="max-w-[320px] mx-auto bg-white/[0.01] backdrop-blur-3xl border border-white/10 rounded-full p-2 flex items-center justify-between shadow-[0_20px_50px_rgba(0,0,0,0.5)] ring-1 ring-white/5">
           <button 
             onClick={handleAddManual}
             className="flex-1 py-2 flex flex-col items-center gap-1 transition-all"
-            style={{ color: 'var(--accent-color)', opacity: 0.6 }}
-            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+            style={{ color: 'var(--accent-color)', opacity: 1 }}
           >
             <Plus size={20} />
             <span className="text-[9px] font-bold uppercase tracking-widest">Manual</span>
@@ -955,9 +994,7 @@ export default function App() {
           <button 
             onClick={() => setIsGuideOpen(true)}
             className="flex-1 py-2 flex flex-col items-center gap-1 transition-all"
-            style={{ color: 'var(--accent-color)', opacity: 0.6 }}
-            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+            style={{ color: 'var(--accent-color)', opacity: 1 }}
           >
             <Info size={20} />
             <span className="text-[9px] font-bold uppercase tracking-widest">Guide</span>
@@ -986,6 +1023,7 @@ export default function App() {
             onSave={handleSave}
             onDelete={handleDelete}
             extractionWarning={extractionWarning}
+            isSaving={isSaving}
             onClose={() => {
               setIsFormOpen(false);
               setEditingMedicine(null);

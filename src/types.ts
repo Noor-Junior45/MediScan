@@ -7,6 +7,8 @@ export interface MedicineHistory {
   details: string;
 }
 
+export type MedicineForm = 'tablet' | 'capsule' | 'syrup' | 'ampule' | 'powder' | 'other';
+
 export interface Medicine {
   id: string;
   name: string;
@@ -20,6 +22,7 @@ export interface Medicine {
   quantity?: number;
   isDeleted?: boolean;
   deletedAt?: number;
+  form?: MedicineForm;
 }
 
 export const STORAGE_KEY = "mediscan_medicines";

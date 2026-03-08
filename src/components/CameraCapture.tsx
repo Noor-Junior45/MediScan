@@ -47,8 +47,8 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
       const context = canvas.getContext('2d');
       
       if (context) {
-        // Calculate new dimensions (max 800px)
-        const MAX_DIMENSION = 800;
+        // Calculate new dimensions (max 640px for faster AI processing)
+        const MAX_DIMENSION = 640;
         let width = video.videoWidth;
         let height = video.videoHeight;
         

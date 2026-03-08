@@ -16,7 +16,8 @@
         "quantity": { "type": "number" },
         "taken": { "type": "boolean" },
         "isDeleted": { "type": "boolean" },
-        "deletedAt": { "type": ["number", "null"] }
+        "deletedAt": { "type": ["number", "null"] },
+        "form": { "type": "string", "enum": ["tablet", "capsule", "syrup", "ampule", "powder", "other"] }
       },
       "required": ["id", "name", "dosage", "expirationDate", "userId"]
     },
