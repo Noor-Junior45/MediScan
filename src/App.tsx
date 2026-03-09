@@ -31,7 +31,7 @@ export default function App() {
   const [extractionError, setExtractionError] = useState<string | null>(null);
   const [extractionWarning, setExtractionWarning] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'expired' | 'expiring_soon' | 'expiring_3_months'>('all');
+  const [filter, setFilter] = useState<'all' | 'expired' | 'expiring_soon' | 'expiring_3_months' | 'taken' | 'expiring_6_months'>('all');
   const [sortOrder, setSortOrder] = useState<'default' | 'asc' | 'desc'>('default');
   const [alertThreshold, setAlertThreshold] = useState(90);
   const [lowQuantityThreshold, setLowQuantityThreshold] = useState(5);
@@ -805,6 +805,11 @@ export default function App() {
     if (filter === 'expired') return diffDays < 0;
     if (filter === 'expiring_soon') return diffDays >= 0 && diffDays <= 10;
     if (filter === 'expiring_3_months') return diffDays >= 0 && diffDays <= effectiveThreshold;
+    if (filter === 'expiring_6_months') return diffDays >= 0 && diffDays <= 180;
+    if (filter === 'taken') return m.taken === true;
+    
+    // Default: hide taken medicines in other filters unless explicitly selected
+    if (filter !== 'taken' && m.taken) return false;
     
     return true;
   }).sort((a, b) => {
@@ -997,14 +1002,20 @@ export default function App() {
 
       <main className="max-w-2xl mx-auto pt-6 pb-32">
         {/* Stats / Info */}
-        <div className="px-4 mb-6 grid grid-cols-2 gap-4">
-          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-3xl p-6 shadow-lg ring-1 ring-white/5">
-            <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold mb-1">Total Items</p>
-            <p className="text-3xl font-bold tracking-tight">{medicines.length}</p>
+        <div className="px-4 mb-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-lg ring-1 ring-white/5">
+            <p className="text-white/40 text-[9px] uppercase tracking-widest font-bold mb-1">Total</p>
+            <p className="text-2xl font-bold tracking-tight">{medicines.length}</p>
           </div>
-          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-3xl p-6 shadow-lg ring-1 ring-white/5">
-            <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold mb-1">Expiring Soon</p>
-            <p className="text-3xl font-bold tracking-tight text-orange-400">
+          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-lg ring-1 ring-white/5">
+            <p className="text-white/40 text-[9px] uppercase tracking-widest font-bold mb-1">Unique</p>
+            <p className="text-2xl font-bold tracking-tight text-blue-400">
+              {new Set(medicines.map(m => m.name.toLowerCase().trim())).size}
+            </p>
+          </div>
+          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-lg ring-1 ring-white/5">
+            <p className="text-white/40 text-[9px] uppercase tracking-widest font-bold mb-1">Expiring</p>
+            <p className="text-2xl font-bold tracking-tight text-orange-400">
               {medicines.filter(m => {
                 const expiry = new Date(m.expirationDate);
                 const today = new Date();
@@ -1022,34 +1033,52 @@ export default function App() {
               }).length}
             </p>
           </div>
+          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-lg ring-1 ring-white/5">
+            <p className="text-white/40 text-[9px] uppercase tracking-widest font-bold mb-1">Taken</p>
+            <p className="text-2xl font-bold tracking-tight text-emerald-400">
+              {medicines.filter(m => m.taken).length}
+            </p>
+          </div>
         </div>
 
         {/* Filters */}
-        <div className="px-4 mb-6 flex gap-1.5 overflow-x-auto no-scrollbar pb-2">
+        <div className="px-4 mb-6 flex flex-wrap gap-2">
           <button 
             onClick={() => setFilter('all')}
-            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap transition-all ${filter === 'all' ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
+            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all ${filter === 'all' ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
           >
             All
           </button>
           <button 
             onClick={() => setFilter('expired')}
-            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap transition-all ${filter === 'expired' ? 'bg-red-500 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
+            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all ${filter === 'expired' ? 'bg-red-500 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
           >
             Expired
           </button>
           <button 
             onClick={() => setFilter('expiring_soon')}
-            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap transition-all ${filter === 'expiring_soon' ? 'bg-orange-500 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
+            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all ${filter === 'expiring_soon' ? 'bg-orange-500 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
           >
             Soon
           </button>
           <button 
             onClick={() => setFilter('expiring_3_months')}
-            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap transition-all ${filter === 'expiring_3_months' ? 'bg-yellow-500' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
+            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all ${filter === 'expiring_3_months' ? 'bg-yellow-500' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
             style={filter === 'expiring_3_months' ? { color: '#000000' } : {}}
           >
             {alertThreshold === 90 ? '< 3 Mo' : `< ${alertThreshold}d`}
+          </button>
+          <button 
+            onClick={() => setFilter('expiring_6_months')}
+            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all ${filter === 'expiring_6_months' ? 'bg-emerald-500 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
+          >
+            &lt; 6 Mo
+          </button>
+          <button 
+            onClick={() => setFilter('taken')}
+            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all ${filter === 'taken' ? 'bg-blue-500 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
+          >
+            Taken
           </button>
           <div className="w-px h-6 bg-white/10 mx-1 self-center shrink-0"></div>
           <button 
@@ -1058,7 +1087,7 @@ export default function App() {
               setSortOrder(nextOrder);
               handleUpdateConfig({ sortOrder: nextOrder });
             }}
-            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap transition-all ${sortOrder !== 'default' ? 'bg-indigo-500 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
+            className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all ${sortOrder !== 'default' ? 'bg-indigo-500 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
           >
             {sortOrder === 'desc' ? 'Z-A' : 'A-Z'}
           </button>

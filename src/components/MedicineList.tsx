@@ -78,6 +78,7 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
       const label = alertThreshold === 90 ? 'Expiring in 3mo' : `Expiring in ${alertThreshold}d`;
       return { label, color: 'text-yellow-500', bg: 'bg-yellow-500/10', Icon: Clock };
     }
+    if (diffDays <= 180) return { label: 'Expiring in 6mo', color: 'text-emerald-400', bg: 'bg-emerald-500/10', Icon: Clock };
     return { label: 'Safe', color: 'text-emerald-500', bg: 'bg-emerald-500/10', Icon: CheckCircle2 };
   };
 

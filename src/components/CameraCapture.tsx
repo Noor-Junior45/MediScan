@@ -14,6 +14,8 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isFlashOn, setIsFlashOn] = useState(false);
+  const [hasFlash, setHasFlash] = useState(false);
 
   const startCamera = useCallback(async () => {
     try {
@@ -24,6 +26,13 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
       setStream(mediaStream);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+      }
+
+      // Check for flash support
+      const track = mediaStream.getVideoTracks()[0];
+      const capabilities = track.getCapabilities?.() as any;
+      if (capabilities && capabilities.torch) {
+        setHasFlash(true);
       }
     } catch (err) {
       setError("Could not access camera. Please ensure permissions are granted.");
@@ -39,6 +48,20 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
       }
     };
   }, [startCamera]);
+
+  const toggleFlash = async () => {
+    if (!stream || !hasFlash) return;
+    const track = stream.getVideoTracks()[0];
+    try {
+      const newFlashState = !isFlashOn;
+      await track.applyConstraints({
+        advanced: [{ torch: newFlashState }]
+      } as any);
+      setIsFlashOn(newFlashState);
+    } catch (err) {
+      console.error("Failed to toggle flash:", err);
+    }
+  };
 
   const captureFrame = () => {
     if (videoRef.current && canvasRef.current) {
@@ -117,8 +140,21 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
               >
                 <X size={24} />
               </button>
-              <div className="px-4 py-1.5 bg-black/40 backdrop-blur-xl border border-white/10 rounded-full text-white text-xs font-medium tracking-widest uppercase">
-                Scanning Mode
+              
+              <div className="flex gap-2">
+                {hasFlash && (
+                  <button 
+                    onClick={toggleFlash}
+                    className={`p-3 backdrop-blur-xl border border-white/10 rounded-full transition-all ${
+                      isFlashOn ? 'bg-yellow-500 text-black border-yellow-400' : 'bg-black/40 text-white'
+                    }`}
+                  >
+                    <Zap size={24} fill={isFlashOn ? "currentColor" : "none"} />
+                  </button>
+                )}
+                <div className="px-4 py-3 bg-black/40 backdrop-blur-xl border border-white/10 rounded-full text-white text-xs font-medium tracking-widest uppercase flex items-center">
+                  Scanning Mode
+                </div>
               </div>
             </div>
 

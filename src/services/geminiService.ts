@@ -35,7 +35,7 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", // Using Gemini 3 Flash as it's the recommended model for basic tasks
+      model: "gemini-flash-latest", // Using gemini-flash-latest for broader compatibility in multimodal tasks
       contents: {
         parts: [
           {
@@ -93,13 +93,15 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
     let userMessage = "An unexpected error occurred while communicating with the AI. Please try again.";
     
     if (error.message?.includes("API key not valid")) {
-      userMessage = "The Gemini API key is invalid. Please check your configuration.";
-    } else if (error.message?.includes("Requested entity was not found")) {
-      userMessage = "The AI model could not be reached. Please try again later.";
-    } else if (error.message?.includes("Quota exceeded")) {
+      userMessage = "The Gemini API key is invalid. Please check your configuration in the Secrets panel.";
+    } else if (error.message?.includes("Requested entity was not found") || error.message?.includes("model not found")) {
+      userMessage = "The AI model could not be reached or is unavailable in your region. Please try again later.";
+    } else if (error.message?.includes("Quota exceeded") || error.message?.includes("429")) {
       userMessage = "AI usage limit reached. Please try again in a few minutes.";
     } else if (error instanceof SyntaxError) {
-      userMessage = "Failed to parse the AI response. Please try capturing the image again.";
+      userMessage = "Failed to parse the AI response. Please try capturing the image again with better lighting.";
+    } else if (error.message?.includes("User location is not supported")) {
+      userMessage = "The Gemini AI service is not available in your current location.";
     }
 
     return {
