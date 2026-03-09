@@ -39,7 +39,7 @@ interface FirestoreErrorInfo {
   }
 }
 
-// Safe stringify helper to handle circular references
+// Safe stringify helper to handle circular references and non-serializable objects
 const getSafeStringify = () => {
   const cache = new Set();
   return (key: string, value: any) => {
@@ -48,6 +48,16 @@ const getSafeStringify = () => {
         return '[Circular]';
       }
       cache.add(value);
+
+      // Handle DOM elements which often cause circular issues and can't be stringified
+      if (value instanceof Node || (value.constructor && value.constructor.name === 'HTMLVideoElement')) {
+        return `[DOM Element: ${value.nodeName || 'Unknown'}]`;
+      }
+      
+      // Handle React internal fiber nodes if they somehow leaked in
+      if (key.startsWith('__reactFiber') || key.startsWith('__reactProps')) {
+        return '[React Internal]';
+      }
     }
     return value;
   };
@@ -73,8 +83,13 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   }
   
-  const safeStringify = getSafeStringify();
-  const errString = JSON.stringify(errInfo, safeStringify);
+  let errString: string;
+  try {
+    const safeStringify = getSafeStringify();
+    errString = JSON.stringify(errInfo, safeStringify);
+  } catch (e) {
+    errString = `{"error": "Failed to stringify error info", "originalError": "${errInfo.error}"}`;
+  }
   
   console.error('Firestore Error: ', errString);
   throw new Error(errString);
