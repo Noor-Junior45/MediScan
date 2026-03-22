@@ -21,6 +21,7 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
     dosage: '',
     expirationDate: '',
     usageInstructions: '',
+    schedule: '',
     capturedImage: '',
     quantity: undefined,
   });
@@ -120,8 +121,8 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
                   <div className="text-center py-8 text-white/40 text-sm">No history available yet.</div>
                 ) : (
                   <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-white/10 before:to-transparent">
-                    {history.map((log) => (
-                      <div key={log.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                    {history.map((log, idx) => (
+                      <div key={log.id || `history-${idx}`} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
                         <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white/10 bg-[#1a1a1a] text-white/50 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
                           <Clock size={14} />
                         </div>
@@ -183,7 +184,7 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
                     <input
                       required
                       type="text"
-                      value={formData.name}
+                      value={formData.name || ''}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       className="w-full bg-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20"
                       placeholder="e.g. Paracetamol"
@@ -217,7 +218,7 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
                         <input
                           required
                           type="text"
-                          value={formData.dosage}
+                          value={formData.dosage || ''}
                           onChange={(e) => setFormData({ ...formData, dosage: e.target.value })}
                           className="w-full bg-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20"
                           placeholder="e.g. 500mg"
@@ -254,7 +255,7 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
                       <input
                         required
                         type="date"
-                        value={formData.expirationDate}
+                        value={formData.expirationDate || ''}
                         onChange={(e) => setFormData({ ...formData, expirationDate: e.target.value })}
                         className="w-full bg-orange-500/5 border border-orange-500/30 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-orange-500/60 transition-all [color-scheme:dark] shadow-[0_0_15px_rgba(249,115,22,0.05)]"
                       />
@@ -265,9 +266,20 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
                   </div>
 
                     <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Medication Schedule</label>
+                      <input
+                        type="text"
+                        value={formData.schedule || ''}
+                        onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
+                        className="w-full bg-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20"
+                        placeholder="e.g. Twice a day, after meals"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
                       <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Usage Instructions</label>
                       <textarea
-                        value={formData.usageInstructions}
+                        value={formData.usageInstructions || ''}
                         onChange={(e) => setFormData({ ...formData, usageInstructions: e.target.value })}
                         className="w-full bg-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20 min-h-[80px]"
                         placeholder="e.g. Take 1 tablet after meals..."

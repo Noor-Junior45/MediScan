@@ -166,7 +166,7 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
 
         return (
           <motion.div
-            key={med.id}
+            key={`${med.id}-${index}`}
             initial={{ opacity: 0, y: 10 }}
             animate={{ 
               opacity: med.taken ? 0.5 : 1, 
@@ -206,6 +206,17 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
               'bg-white/[0.01] border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
             }`}
           >
+            {med.imageUrl && (
+              <div className="absolute top-0 right-0 w-24 h-24 opacity-10 group-hover:opacity-20 transition-opacity pointer-events-none">
+                <img 
+                  src={med.imageUrl} 
+                  alt="" 
+                  className="w-full h-full object-cover rounded-bl-3xl"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            )}
+            
             <div className="flex justify-between items-start mb-3">
               <div className="flex items-start gap-3 flex-1">
                 {isSelectionMode && (
@@ -223,6 +234,12 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
                       <Package size={12} />
                       {med.dosage}
                     </span>
+                    {med.schedule && (
+                      <span className="flex items-center gap-1.5 text-indigo-400 text-xs font-medium">
+                        <Clock size={12} />
+                        {med.schedule}
+                      </span>
+                    )}
                     {!med.taken && (
                       <span className={`flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>
                         <status.Icon size={12} />

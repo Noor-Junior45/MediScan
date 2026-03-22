@@ -49,13 +49,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onPermanentDelete
 }) => {
   const [showConfirmClear, setShowConfirmClear] = React.useState(false);
-  const [cookieConsent, setCookieConsent] = React.useState(localStorage.getItem('mediscan_cookie_consent') !== 'denied');
+  const [cookieConsent, setCookieConsent] = React.useState(() => {
+    try {
+      return localStorage.getItem('mediscan_cookie_consent') !== 'denied';
+    } catch (e) {
+      return true; // Default to true if storage is blocked
+    }
+  });
 
   const colors = [
-    { name: 'Classic', value: '#ffffff' },
     { name: 'Orange', value: '#f97316' },
     { name: 'Emerald', value: '#10b981' },
     { name: 'Violet', value: '#8b5cf6' },
+    { name: 'Sky', value: '#0ea5e9' },
   ];
 
   return (
@@ -213,7 +219,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <input
                 type="number"
                 min="0"
-                value={lowQuantityThreshold}
+                value={lowQuantityThreshold ?? 0}
                 onChange={(e) => setLowQuantityThreshold(parseInt(e.target.value, 10) || 0)}
                 className="w-24 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all text-center font-bold"
               />
@@ -284,7 +290,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={() => {
                   const newConsent = !cookieConsent;
                   setCookieConsent(newConsent);
-                  localStorage.setItem('mediscan_cookie_consent', newConsent ? 'granted' : 'denied');
+                  try {
+                    localStorage.setItem('mediscan_cookie_consent', newConsent ? 'granted' : 'denied');
+                  } catch (e) {
+                    console.warn('Failed to save cookie consent to localStorage:', e);
+                  }
                   if (typeof window !== 'undefined' && (window as any).gtag) {
                     (window as any).gtag('consent', 'update', {
                       'ad_storage': newConsent ? 'granted' : 'denied',

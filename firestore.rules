@@ -1,66 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: medicines
-    // Fields: id, name, dosage, expirationDate, usageInstructions, createdAt, userId, capturedImage
-    //
-    // Collection: userConfigs
-    // Fields: userId, email, emailNotificationsEnabled, browserNotificationsEnabled, alertThreshold, accentColor, sortOrder, lowQuantityThreshold, theme
-    //
-    // ===============================================================
-
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function isDocOwner() {
-      return isAuthenticated() && (resource == null || request.auth.uid == resource.data.userId);
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email == "mdhassan1738@gmail.com" && request.auth.token.email_verified == true));
     }
 
     function isValidEmail(email) {
       return email is string && email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
     }
 
-    function isValidMedicine(data) {
-      let requiredFields = ['id', 'name', 'dosage', 'expirationDate', 'userId', 'createdAt'];
-      let optionalFields = ['usageInstructions', 'capturedImage', 'taken', 'quantity', 'isDeleted', 'deletedAt', 'form'];
-      let allFields = requiredFields.concat(optionalFields);
-      
-      return data.keys().hasAll(requiredFields) &&
-             data.keys().hasOnly(allFields) &&
-             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
-             data.dosage is string && data.dosage.size() < 100 &&
-             data.expirationDate is string && data.expirationDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
-             data.userId == request.auth.uid &&
-             data.createdAt is number &&
-             (!('usageInstructions' in data) || (data.usageInstructions is string && data.usageInstructions.size() < 2000)) &&
-             (!('capturedImage' in data) || (data.capturedImage is string && data.capturedImage.size() < 800000)) &&
-             (!('taken' in data) || data.taken is bool) &&
-             (!('quantity' in data) || (data.quantity is number && data.quantity >= 0)) &&
-             (!('isDeleted' in data) || data.isDeleted is bool) &&
-             (!('deletedAt' in data) || data.deletedAt == null || data.deletedAt is number) &&
-             (!('form' in data) || (data.form in ['tablet', 'capsule', 'syrup', 'ampule', 'powder', 'tape', 'liquid', 'other']));
-    }
-
     function isValidUserConfig(data) {
-      let requiredFields = ['userId', 'email'];
-      let optionalFields = ['emailNotificationsEnabled', 'browserNotificationsEnabled', 'alertThreshold', 'accentColor', 'sortOrder', 'lowQuantityThreshold', 'theme'];
-      let allFields = requiredFields.concat(optionalFields);
-
-      return data.keys().hasAll(requiredFields) &&
-             data.keys().hasOnly(allFields) &&
+      return data.keys().hasAll(['userId', 'email']) &&
+             data.keys().hasOnly(['userId', 'email', 'emailNotificationsEnabled', 'browserNotificationsEnabled', 'alertThreshold', 'accentColor', 'sortOrder', 'lowQuantityThreshold', 'theme']) &&
              data.userId == request.auth.uid &&
              isValidEmail(data.email) &&
              (!('emailNotificationsEnabled' in data) || data.emailNotificationsEnabled is bool) &&
@@ -72,11 +29,27 @@ service cloud.firestore {
              (!('theme' in data) || (data.theme in ['system', 'light', 'dark']));
     }
 
+    function isValidMedicine(data) {
+      return data.keys().hasAll(['id', 'name', 'dosage', 'expirationDate', 'userId', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'name', 'dosage', 'expirationDate', 'userId', 'createdAt', 'usageInstructions', 'capturedImage', 'taken', 'quantity', 'isDeleted', 'deletedAt', 'form']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.dosage is string && data.dosage.size() < 100 &&
+             data.expirationDate is string && data.expirationDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+             data.userId == request.auth.uid &&
+             data.createdAt is number &&
+             (!('usageInstructions' in data) || (data.usageInstructions is string && data.usageInstructions.size() < 2000)) &&
+             (!('capturedImage' in data) || data.capturedImage == null || (data.capturedImage is string && data.capturedImage.size() < 800000)) &&
+             (!('taken' in data) || data.taken is bool) &&
+             (!('quantity' in data) || (data.quantity is number && data.quantity >= 0)) &&
+             (!('isDeleted' in data) || data.isDeleted is bool) &&
+             (!('deletedAt' in data) || data.deletedAt == null || data.deletedAt is number) &&
+             (!('form' in data) || (data.form in ['tablet', 'capsule', 'syrup', 'ampule', 'powder', 'tape', 'liquid', 'other']));
+    }
+
     function isValidMedicineHistory(data) {
-      let requiredFields = ['id', 'medicineId', 'userId', 'timestamp', 'actionType', 'details'];
-      
-      return data.keys().hasAll(requiredFields) &&
-             data.keys().hasOnly(requiredFields) &&
+      return data.keys().hasAll(['id', 'medicineId', 'userId', 'timestamp', 'actionType', 'details']) &&
+             data.keys().hasOnly(['id', 'medicineId', 'userId', 'timestamp', 'actionType', 'details']) &&
              data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
              data.medicineId is string && data.medicineId.size() > 0 && data.medicineId.size() < 100 &&
              data.userId == request.auth.uid &&
@@ -85,35 +58,25 @@ service cloud.firestore {
              data.details is string && data.details.size() < 2000;
     }
 
-    function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "mdhassan1738@gmail.com" && request.auth.token.email_verified == true));
-    }
-
-    // ===============================================================
-    // Rules
-    // ===============================================================
-
     match /medicines/{medicineId} {
-      allow read: if isAuthenticated() && isDocOwner();
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && isValidMedicine(request.resource.data);
-      allow update: if isAuthenticated() && isDocOwner() && isValidMedicine(request.resource.data);
-      allow delete: if isAuthenticated() && isDocOwner();
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidMedicine(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
 
       match /history/{historyId} {
-        allow read: if isAuthenticated() && get(/databases/$(database)/documents/medicines/$(medicineId)).data.userId == request.auth.uid;
+        allow read: if isAuthenticated() && (exists(/databases/$(database)/documents/medicines/$(medicineId)) && get(/databases/$(database)/documents/medicines/$(medicineId)).data.userId == request.auth.uid || isAdmin());
         allow create: if isAuthenticated() && isValidMedicineHistory(request.resource.data) && request.resource.data.medicineId == medicineId;
         allow update: if false; // History should be immutable
-        allow delete: if isAuthenticated() && get(/databases/$(database)/documents/medicines/$(medicineId)).data.userId == request.auth.uid;
+        allow delete: if isAuthenticated() && (exists(/databases/$(database)/documents/medicines/$(medicineId)) && get(/databases/$(database)/documents/medicines/$(medicineId)).data.userId == request.auth.uid || isAdmin());
       }
     }
 
     match /userConfigs/{userId} {
-      allow read: if isAuthenticated() && isOwner(userId);
-      allow create: if isAuthenticated() && isOwner(userId) && isValidUserConfig(request.resource.data);
-      allow update: if isAuthenticated() && isOwner(userId) && isValidUserConfig(request.resource.data);
-      allow delete: if isAuthenticated() && isOwner(userId);
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAuthenticated() && request.auth.uid == userId && isValidUserConfig(request.resource.data);
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin()) && isValidUserConfig(request.resource.data);
+      allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
     }
 
     match /test/connection {

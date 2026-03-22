@@ -6,11 +6,17 @@ export const CookieConsentBanner: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    const consent = localStorage.getItem('mediscan_cookie_consent');
-    if (!consent) {
+    try {
+      const consent = localStorage.getItem('mediscan_cookie_consent');
+      if (!consent) {
+        setIsVisible(true);
+      } else {
+        applyConsent(consent === 'granted');
+      }
+    } catch (e) {
+      console.warn('LocalStorage access denied:', e);
+      // If localStorage is blocked, we still want to show the banner or assume denied
       setIsVisible(true);
-    } else {
-      applyConsent(consent === 'granted');
     }
   }, []);
 
@@ -26,13 +32,21 @@ export const CookieConsentBanner: React.FC = () => {
   };
 
   const handleAccept = () => {
-    localStorage.setItem('mediscan_cookie_consent', 'granted');
+    try {
+      localStorage.setItem('mediscan_cookie_consent', 'granted');
+    } catch (e) {
+      console.warn('Failed to save cookie consent to localStorage:', e);
+    }
     applyConsent(true);
     setIsVisible(false);
   };
 
   const handleDecline = () => {
-    localStorage.setItem('mediscan_cookie_consent', 'denied');
+    try {
+      localStorage.setItem('mediscan_cookie_consent', 'denied');
+    } catch (e) {
+      console.warn('Failed to save cookie consent to localStorage:', e);
+    }
     applyConsent(false);
     setIsVisible(false);
   };

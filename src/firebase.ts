@@ -1,14 +1,16 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, getDocFromServer, writeBatch, deleteField } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 
-export { signInWithPopup, signOut, onAuthStateChanged, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, getDocFromServer, writeBatch, deleteField, signInWithEmailAndPassword, createUserWithEmailAndPassword };
+export { signInWithPopup, signOut, onAuthStateChanged, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, getDocFromServer, writeBatch, deleteField, signInWithEmailAndPassword, createUserWithEmailAndPassword, ref, uploadBytes, getDownloadURL, deleteObject };
 export type { User };
 
 export enum OperationType {
@@ -41,23 +43,49 @@ interface FirestoreErrorInfo {
 
 // Safe stringify helper to handle circular references and non-serializable objects
 const getSafeStringify = () => {
-  const cache = new Set();
+  const cache = new WeakSet();
   return (key: string, value: any) => {
     if (typeof value === 'object' && value !== null) {
+      // Handle React internal fiber nodes and other internal properties early
+      if (
+        key.startsWith('__reactFiber') || 
+        key.startsWith('__reactProps') || 
+        key.startsWith('__reactEvents') || 
+        key.startsWith('__reactContainer') ||
+        key.startsWith('__reactInternal') ||
+        key.startsWith('__reactEventHandlers')
+      ) {
+        return '[React Internal]';
+      }
+
       if (cache.has(value)) {
         return '[Circular]';
       }
-      cache.add(value);
-
-      // Handle DOM elements which often cause circular issues and can't be stringified
-      if (value instanceof Node || (value.constructor && value.constructor.name === 'HTMLVideoElement')) {
-        return `[DOM Element: ${value.nodeName || 'Unknown'}]`;
-      }
       
-      // Handle React internal fiber nodes if they somehow leaked in
-      if (key.startsWith('__reactFiber') || key.startsWith('__reactProps')) {
-        return '[React Internal]';
+      // Handle DOM elements which often cause circular issues and can't be stringified
+      // Use multiple checks for robustness across different environments
+      const isDOM = (val: any): boolean => {
+        try {
+          return (
+            val instanceof Node || 
+            (typeof val.nodeType === 'number' && typeof val.nodeName === 'string') ||
+            (val.constructor && (
+              val.constructor.name === 'HTMLVideoElement' || 
+              val.constructor.name === 'Window' || 
+              val.constructor.name.includes('Element') ||
+              val.constructor.name.includes('HTML')
+            ))
+          );
+        } catch (e) {
+          return false;
+        }
+      };
+
+      if (isDOM(value)) {
+        return `[DOM Element: ${value.nodeName || value.tagName || value.constructor?.name || 'Unknown'}]`;
       }
+
+      cache.add(value);
     }
     return value;
   };

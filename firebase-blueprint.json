@@ -62,7 +62,7 @@
       "schema": "MedicineHistory",
       "description": "Subcollection of history logs for a medicine"
     },
-    "/userConfigs/{userId}": {
+    "/users/{userId}/settings/appSettings": {
       "schema": "UserConfig",
       "description": "User configuration and preferences"
     }

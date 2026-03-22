@@ -8,6 +8,7 @@ export interface ExtractedMedicine {
   dosage: string;
   expirationDate: string;
   usageInstructions?: string;
+  schedule?: string;
   quantity?: number;
   form?: MedicineForm;
 }
@@ -35,7 +36,7 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest", // Using gemini-flash-latest for broader compatibility in multimodal tasks
+      model: "gemini-3-flash-preview", // Updated to the latest recommended model
       contents: {
         parts: [
           {
@@ -45,7 +46,7 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
             },
           },
           {
-            text: "Analyze this image for medicine details. If the image is blurry, poorly lit, or does not contain a readable medicine label, set 'success' to false and provide a specific 'errorMessage' (e.g., 'The image is too blurry. Please hold the camera steady.', 'Poor lighting. Please move to a brighter area.', 'No medicine label detected.'). If readable, set 'success' to true and extract the medicine name, dosage, quantity, expiration date, and usage instructions. Also identify the medicine form: 'tablet', 'capsule', 'syrup', 'ampule', 'powder', 'tape', 'liquid', or 'other'. IMPORTANT: Distinguish between Manufacturing Date (Mfg) and Expiration Date (Exp). Only return the Expiration Date. CRITICAL: If ONLY the medicine name is visible but other details (dosage, expiration date, etc.) are missing, STILL set 'success' to true. Extract the name, and use your general medical knowledge to fill in common usage instructions, typical dosage, and a placeholder expiration date (e.g., 1 year from now). Set 'warningMessage' to inform the user that some data was missing from the image and was inferred, and remind them to verify the expiration date manually.",
+            text: "Analyze this image for medicine details. If readable, set 'success' to true and extract the medicine name, dosage, quantity, expiration date, usage instructions, and medication schedule (e.g., 'Twice a day', 'Every 8 hours'). Also identify the medicine form: 'tablet', 'capsule', 'syrup', 'ampule', 'powder', 'tape', 'liquid', or 'other'. IMPORTANT: Distinguish between Manufacturing Date (Mfg) and Expiration Date (Exp). Only return the Expiration Date. CRITICAL: If ONLY the medicine name is visible but other details (dosage, expiration date, etc.) are missing, STILL set 'success' to true. Extract the name, and use your general medical knowledge to fill in common usage instructions, typical dosage, a placeholder expiration date (e.g., 1 year from now), and a typical schedule. Set 'warningMessage' to inform the user that some data was missing from the image and was inferred, and remind them to verify the details manually.",
           },
         ],
       },
@@ -65,6 +66,7 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
                 quantity: { type: Type.NUMBER, description: "Quantity of medicine (e.g., 30 for 30 pills, 100 for 100ml). Return a number." },
                 expirationDate: { type: Type.STRING, description: "Expiration date in YYYY-MM-DD format if possible, or as seen" },
                 usageInstructions: { type: Type.STRING, description: "Usage instructions or notes" },
+                schedule: { type: Type.STRING, description: "Medication schedule (e.g., 'Twice a day')" },
                 form: { type: Type.STRING, description: "Medicine form: 'tablet', 'capsule', 'syrup', 'ampule', 'powder', 'tape', 'liquid', or 'other'" },
               },
               required: ["name", "dosage", "expirationDate"],
@@ -108,5 +110,69 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
       success: false,
       errorMessage: userMessage
     };
+  }
+}
+
+export interface InteractionResult {
+  hasInteractions: boolean;
+  interactions: {
+    medications: string[];
+    severity: "low" | "moderate" | "high";
+    description: string;
+    recommendation: string;
+  }[];
+  generalAdvice: string;
+}
+
+export async function checkDrugInteractions(medicines: { name: string; dosage: string }[]): Promise<InteractionResult | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || medicines.length < 2) return null;
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  try {
+    const medicineList = medicines.map(m => `${m.name} (${m.dosage})`).join(", ");
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Analyze the following list of medications for potential drug-to-drug interactions: ${medicineList}. 
+      Identify specific interactions between pairs or groups of medications. 
+      For each interaction, provide the medications involved, the severity (low, moderate, high), a description of the interaction, and a recommendation. 
+      Also provide a general advice summary for the user.
+      If no interactions are found, set 'hasInteractions' to false and 'interactions' to an empty array.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            hasInteractions: { type: Type.BOOLEAN },
+            interactions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  medications: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  severity: { type: Type.STRING, enum: ["low", "moderate", "high"] },
+                  description: { type: Type.STRING },
+                  recommendation: { type: Type.STRING },
+                },
+                required: ["medications", "severity", "description", "recommendation"],
+              },
+            },
+            generalAdvice: { type: Type.STRING },
+          },
+          required: ["hasInteractions", "interactions", "generalAdvice"],
+        },
+      },
+    });
+
+    if (!response.text) return null;
+    let cleanText = response.text.trim();
+    if (cleanText.startsWith("```")) {
+      cleanText = cleanText.replace(/^```(?:json)?/, "").replace(/```$/, "").trim();
+    }
+    return JSON.parse(cleanText) as InteractionResult;
+  } catch (error) {
+    console.error("Interaction Check Error:", error);
+    return null;
   }
 }

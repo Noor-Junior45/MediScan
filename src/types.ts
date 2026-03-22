@@ -15,8 +15,10 @@ export interface Medicine {
   dosage: string;
   expirationDate: string;
   usageInstructions: string;
+  schedule?: string; // New field for medication schedule
   createdAt: number;
-  capturedImage?: string;
+  capturedImage?: string; // Keep for backward compatibility or temporary storage
+  imageUrl?: string; // New field for Firebase Storage URL
   userId: string;
   taken?: boolean;
   quantity?: number;
