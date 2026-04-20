@@ -76,9 +76,31 @@
         "timestamp": { "type": "number" }
       },
       "required": ["id", "role", "content", "timestamp"]
+    },
+    "Mail": {
+      "title": "Mail",
+      "description": "Email document for the Trigger Email extension",
+      "type": "object",
+      "properties": {
+        "to": { "type": "string", "format": "email" },
+        "message": {
+          "type": "object",
+          "properties": {
+            "subject": { "type": "string" },
+            "text": { "type": "string" },
+            "html": { "type": "string" }
+          }
+        },
+        "timestamp": { "type": "object" }
+      },
+      "required": ["to", "message"]
     }
   },
   "firestore": {
+    "/mail/{mailId}": {
+      "schema": "Mail",
+      "description": "Collection for the Trigger Email Firebase Extension"
+    },
     "/medicines/{medicineId}": {
       "schema": "Medicine",
       "description": "Collection of medicines"

@@ -76,6 +76,19 @@ service cloud.firestore {
              data.timestamp is number;
     }
 
+    function isValidMail(data) {
+      return data.keys().hasAll(['to', 'message']) &&
+             data.to == request.auth.token.email &&
+             isValidEmail(data.to) &&
+             data.message.keys().hasAll(['subject', 'text', 'html']);
+    }
+
+    match /mail/{mailId} {
+      allow read: if isAuthenticated() && (resource.data.to == request.auth.token.email || isAdmin());
+      allow create: if isAuthenticated() && isValidMail(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
     match /medicines/{medicineId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && isValidMedicine(request.resource.data);

@@ -191,10 +191,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
       }));
 
       // Add medication context if it's a new or related conversation
-      const medContext = `[Patient Profile Context:
-      - Current Medications: ${medicines.map(m => `${m.name} (${m.dosage}, ${m.form})`).join(", ")}
+      const medContext = `[Patient Profile & Storage Context:
+      - Inventory Check: Use this list to intelligently suggest medicines the user ALREADY has in their vault.
+      - User's Stored Medicines: ${medicines.map(m => `${m.name} (${m.dosage}, ${m.form})`).join(", ")}
       - Date: ${new Date().toLocaleDateString()}
-      - Goal: Provide safe, empathetic medical guidance based on these specific medicines and the conversation history.]\n\n`;
+      - Task: If the user asks for a remedy or recommendation, search their 'User's Stored Medicines' first. Tell them exactly what they have that might help.]\n\n`;
       
       const lastMsgWithContext: ChatMessage = { 
         role: 'user', 

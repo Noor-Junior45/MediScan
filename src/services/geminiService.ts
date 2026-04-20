@@ -58,7 +58,7 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
 
     // 2. Client-side AI extraction if not in cache
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: [
         { text: "Extract medication details from this image. Return JSON with fields: name, dosage, expirationDate (YYYY-MM-DD), usageInstructions, schedule, form, quantity." },
         { inlineData: { mimeType: "image/jpeg", data: base64Image.split(',')[1] } }
@@ -105,7 +105,7 @@ export async function checkDrugInteractions(medicines: { name: string; dosage: s
     Return JSON: { hasInteractions: boolean, interactions: [{ medications: string[], severity: "low"|"moderate"|"high", description: string, recommendation: string }], generalAdvice: string }`;
     
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
@@ -134,13 +134,13 @@ export async function chatWithGemini(messages: ChatMessage[]): Promise<string> {
     }));
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: [
         ...history,
         { role: 'user', parts: [{ text: messages[messages.length - 1].content }] }
       ],
       config: {
-        systemInstruction: "You are a professional, empathetic, and knowledgeable Medical Doctor. Your goal is to provide clear, helpful, and safe advice regarding medications and general health. ALWAYS emphasize that your advice is informational and users should consult a physical doctor for critical issues. Use markdown formatting for clarity."
+        systemInstruction: "You are a professional, empathetic, and knowledgeable Medical Doctor. Your goal is to provide clear, helpful, and safe advice regarding medications and general health. \n\nIMPORTANT: DO NOT include a typical medical disclaimer (like 'This is informational only') at the end of every message, as a mandatory daily disclaimer has already been shown to the user in the UI. Keep your answers concise and professional.\n\nYOUR BRAIN: You have direct access to the patient's current medication inventory provided in the conversation context. If a user asks for a recommendation (e.g., 'What can I take for a headache?'), scan their specific stored medicines first and tell them if they already have something matching (e.g., 'I see you have Paracetamol in your storage, which is effective for headaches'). Always prioritize medicines they already own before suggesting new ones. Use markdown formatting for clarity."
       }
     });
 

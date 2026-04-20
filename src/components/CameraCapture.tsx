@@ -44,10 +44,17 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
     startCamera();
     return () => {
       if (stream) {
+        // Explicitly turn off torch if it was on
+        const track = stream.getVideoTracks()[0];
+        if (track && hasFlash) {
+          track.applyConstraints({
+            advanced: [{ torch: false }]
+          } as any).catch(e => console.warn("Failed to turn off torch on unmount", e));
+        }
         stream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [startCamera]);
+  }, [startCamera, stream, hasFlash]);
 
   const toggleFlash = async () => {
     if (!stream || !hasFlash) return;
@@ -93,6 +100,17 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
         
         // Use higher compression to ensure it fits in Firestore (1MB limit)
         const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+        
+        // Turn off torch before callback if it was on
+        if (isFlashOn && stream) {
+          const track = stream.getVideoTracks()[0];
+          if (track) {
+            track.applyConstraints({ advanced: [{ torch: false }] } as any)
+              .catch(e => console.warn("Failed to reset torch after scan", e));
+            setIsFlashOn(false);
+          }
+        }
+
         onCapture(base64);
       }
     }
