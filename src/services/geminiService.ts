@@ -1,5 +1,5 @@
 import { MedicineForm, ChatMessage } from "../types";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
@@ -30,8 +30,9 @@ const getDetailedError = (error: any, provider: 'gemini' | 'deepseek' = 'gemini'
 
   // Specific Gemini error handling
   if (provider === 'gemini') {
+    if (msg.includes('400')) return "Gemini Image Error (400). The AI had trouble processing this specific image. Please try a clearer, closer photo with better lighting.";
     if (msg.includes('403')) return "Gemini Access Denied (403). Ensure the 'Generative Language API' is enabled in your Google Cloud project and your key is correct.";
-    if (msg.includes('404')) return "Gemini Model Not Found (404). Switching to the latest stable preview model. Ensure your API key is valid.";
+    if (msg.includes('404')) return "Gemini Model Not Found (404). Switching to the latest stable model. Ensure your API key is valid.";
     if (msg.includes('429')) return "Gemini Quota Exceeded (429). You are using the free tier. Please wait a minute before trying again.";
   }
   
@@ -94,6 +95,7 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
 
     const imageHash = await generateImageHash(base64Image);
     
+    // Check cache
     const cacheResponse = await fetch('/api/ai/extract-cache', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -106,13 +108,37 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [
-        { text: "Extract medication details from this image. Return JSON with fields: name, dosage, expirationDate (YYYY-MM-DD), usageInstructions, schedule, form, quantity." },
-        { inlineData: { mimeType: "image/jpeg", data: base64Image.split(',')[1] } }
-      ],
+      model: "gemini-flash-latest",
+      contents: {
+        parts: [
+          { inlineData: { mimeType: "image/jpeg", data: base64Image } },
+          { 
+            text: `You are a medical data extraction expert. 
+            Perform exhaustive OCR to extract all visible text from the packaging.
+            Then, identify:
+            - Name: Medicine name.
+            - Dosage: Strength.
+            - Expiration Date: Format YYYY-MM-DD (use end of month if only MM/YYYY is given).
+            - Usage Instructions: Daily frequency/instructions.
+            - Form: tablet, capsule, syrup, ampule, powder, liquid, or other.
+            - Quantity: Number of units.` 
+          }
+        ]
+      },
       config: {
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            dosage: { type: Type.STRING },
+            expirationDate: { type: Type.STRING },
+            usageInstructions: { type: Type.STRING },
+            form: { type: Type.STRING, enum: ["tablet", "capsule", "syrup", "ampule", "powder", "tape", "liquid", "other"] },
+            quantity: { type: Type.NUMBER }
+          },
+          required: ["name", "dosage", "expirationDate", "form"]
+        }
       }
     });
 

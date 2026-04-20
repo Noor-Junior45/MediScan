@@ -13,7 +13,7 @@ import {
   auth, db, storage, googleProvider, signInWithPopup, signOut, onAuthStateChanged, 
   collection, doc, setDoc, deleteDoc, updateDoc, writeBatch, onSnapshot, query, where, orderBy, getDoc, getDocs, User,
   handleFirestoreError, OperationType, deleteField, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  ref, uploadBytes, getDownloadURL, deleteObject
+  ref, uploadBytes, getDownloadURL, deleteObject, serverTimestamp
 } from './firebase';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AdBanner } from './components/AdBanner';
@@ -385,7 +385,7 @@ export default function App() {
       const { capturedImage, ...firestoreData } = data;
       let imageUrl = data.imageUrl;
 
-      // Upload image to Storage if it's a new base64 capture
+      // 1. Parallelize Image Upload (if needed)
       if (capturedImage && capturedImage.startsWith('data:image')) {
         const imageId = crypto.randomUUID();
         const storageRef = ref(storage, `medicines/${user.uid}/${imageId}.jpg`);
@@ -401,9 +401,10 @@ export default function App() {
         (!editingMedicine || m.id !== editingMedicine.id)
       );
 
+      const batch = writeBatch(db);
+
       if (existingMed) {
         const medRef = doc(db, 'medicines', existingMed.id);
-        
         const currentQty = existingMed.quantity || 0;
         const addedQty = firestoreData.quantity || 0;
         const newQuantity = currentQty + addedQty;
@@ -412,7 +413,8 @@ export default function App() {
           quantity: newQuantity,
           userId: user.uid,
           imageUrl: imageUrl || existingMed.imageUrl || null,
-          schedule: firestoreData.schedule || existingMed.schedule || null
+          schedule: firestoreData.schedule || existingMed.schedule || null,
+          updatedAt: serverTimestamp() // Ensure cloud sync timestamp
         };
 
         if (existingMed.dosage === 'N/A' && firestoreData.dosage) {
@@ -422,20 +424,20 @@ export default function App() {
           updateData.usageInstructions = firestoreData.usageInstructions;
         }
 
-        await setDoc(medRef, updateData, { merge: true });
+        batch.set(medRef, updateData, { merge: true });
 
         const historyId = crypto.randomUUID();
-        await setDoc(doc(db, `medicines/${existingMed.id}/history`, historyId), {
+        batch.set(doc(db, `medicines/${existingMed.id}/history`, historyId), {
           id: historyId,
           medicineId: existingMed.id,
           userId: user.uid,
           timestamp: Date.now(),
           actionType: 'EDIT',
-          details: `Merged with another entry. Quantity increased by ${addedQty} to ${newQuantity}.`
+          details: `Cloud Sync: Merged duplicates. Quantity updated to ${newQuantity}.`
         });
 
         if (editingMedicine && editingMedicine.id) {
-          await deleteDoc(doc(db, 'medicines', editingMedicine.id));
+          batch.delete(doc(db, 'medicines', editingMedicine.id));
         }
       } else if (editingMedicine && editingMedicine.id) {
         const medRef = doc(db, 'medicines', editingMedicine.id);
@@ -443,7 +445,8 @@ export default function App() {
           ...editingMedicine, 
           ...firestoreData, 
           userId: user.uid,
-          imageUrl: imageUrl || editingMedicine.imageUrl || null
+          imageUrl: imageUrl || editingMedicine.imageUrl || null,
+          updatedAt: serverTimestamp()
         };
         
         Object.keys(updateData).forEach(key => {
@@ -451,29 +454,21 @@ export default function App() {
             updateData[key] = deleteField();
           }
         });
-        await setDoc(medRef, updateData, { merge: true });
+        batch.set(medRef, updateData, { merge: true });
         
-        // Log history
         const changes: string[] = [];
-        if (editingMedicine.quantity !== data.quantity) changes.push(`Quantity changed from ${editingMedicine.quantity ?? 'none'} to ${data.quantity ?? 'none'}`);
-        if (editingMedicine.expirationDate !== data.expirationDate) changes.push(`Expiration date updated to ${data.expirationDate}`);
-        if (editingMedicine.dosage !== data.dosage) changes.push(`Dosage updated to ${data.dosage}`);
-        if (editingMedicine.name !== data.name) changes.push(`Name updated to ${data.name}`);
-        if (editingMedicine.form !== data.form) changes.push(`Form updated to ${data.form}`);
-        if (editingMedicine.schedule !== data.schedule) changes.push(`Schedule updated to ${data.schedule}`);
+        if (editingMedicine.quantity !== data.quantity) changes.push(`Qty: ${data.quantity}`);
+        if (editingMedicine.expirationDate !== data.expirationDate) changes.push(`Exp: ${data.expirationDate}`);
         
-        if (changes.length > 0) {
-          const historyId = crypto.randomUUID();
-          await setDoc(doc(db, `medicines/${editingMedicine.id}/history`, historyId), {
-            id: historyId,
-            medicineId: editingMedicine.id,
-            userId: user.uid,
-            timestamp: Date.now(),
-            actionType: 'EDIT',
-            details: changes.join(', ')
-          });
-        }
-
+        const historyId = crypto.randomUUID();
+        batch.set(doc(db, `medicines/${editingMedicine.id}/history`, historyId), {
+          id: historyId,
+          medicineId: editingMedicine.id,
+          userId: user.uid,
+          timestamp: Date.now(),
+          actionType: 'EDIT',
+          details: `Cloud Update: ${changes.join(', ') || 'Metadata updated'}`
+        });
       } else {
         const id = crypto.randomUUID();
         const newMed: any = {
@@ -483,7 +478,7 @@ export default function App() {
           expirationDate: firestoreData.expirationDate || new Date().toISOString().split('T')[0],
           usageInstructions: firestoreData.usageInstructions || '',
           schedule: firestoreData.schedule || '',
-          createdAt: Date.now(),
+          createdAt: serverTimestamp(),
           userId: user.uid,
           form: firestoreData.form || 'other',
           imageUrl: imageUrl || null
@@ -493,26 +488,28 @@ export default function App() {
           newMed.quantity = firestoreData.quantity;
         }
 
-        await setDoc(doc(db, 'medicines', id), newMed);
+        batch.set(doc(db, 'medicines', id), newMed);
 
         const historyId = crypto.randomUUID();
-        await setDoc(doc(db, `medicines/${id}/history`, historyId), {
+        batch.set(doc(db, `medicines/${id}/history`, historyId), {
           id: historyId,
           medicineId: id,
           userId: user.uid,
           timestamp: Date.now(),
           actionType: 'CREATE',
-          details: 'Medicine added to inventory.'
+          details: 'Initial cloud record created.'
         });
       }
+
+      // Commit all changes in ONE atomic operation
+      await batch.commit();
 
       setIsFormOpen(false);
       setEditingMedicine(null);
       setExtractionWarning(null);
     } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      setAlertMessage(`Error saving medicine: ${errorMessage.includes('{') ? 'Permission denied or invalid data' : errorMessage}`);
-      console.error('Firestore Save Error:', error);
+      console.error('Cloud Save Error:', error);
+      setAlertMessage("Cloud sync failed. Please check your internet connection.");
     } finally {
       setIsSaving(false);
     }

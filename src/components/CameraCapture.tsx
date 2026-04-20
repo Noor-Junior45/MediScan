@@ -93,8 +93,8 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
       const context = canvas.getContext('2d');
       
       if (context) {
-        // Calculate new dimensions (max 640px for faster AI processing)
-        const MAX_DIMENSION = 640;
+        // Calculate new dimensions (max 1024px for balanced OCR accuracy and speed)
+        const MAX_DIMENSION = 1024;
         let width = video.videoWidth;
         let height = video.videoHeight;
         
@@ -114,8 +114,8 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
         canvas.height = height;
         context.drawImage(video, 0, 0, width, height);
         
-        // Use higher compression to ensure it fits in Firestore (1MB limit)
-        const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+        // Use quality 0.7 for better text clarity while maintaining small size
+        const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
         
         // Turn off torch before callback if it was on
         if (isFlashOn && stream) {
