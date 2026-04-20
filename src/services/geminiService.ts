@@ -1,7 +1,20 @@
 import { MedicineForm, ChatMessage } from "../types";
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY || '' });
+
+// Helper to provide descriptive errors for better diagnostics in India/Global regions
+const getDetailedError = (error: any) => {
+  if (!GEMINI_API_KEY) return "API Key is missing. Please set GEMINI_API_KEY in your deployment environment variables.";
+  
+  const msg = error.message || String(error);
+  if (msg.includes('403')) return "Access Denied (403). Your API Key might be restricted, or the Generative Language API is not enabled for your project.";
+  if (msg.includes('404')) return "Model Not Found (404). The AI engine is currently unavailable for this key/region. Please try a different API key.";
+  if (msg.includes('429')) return "Quota Exceeded (429). Too many requests. Please wait a minute.";
+  
+  return msg || "An unexpected AI connection error occurred.";
+};
 
 export interface ExtractedMedicine {
   name: string;
@@ -34,7 +47,7 @@ export interface InteractionResult {
 }
 
 async function generateImageHash(base64Image: string): Promise<string> {
-  const msgUint8 = new TextEncoder().encode(base64Image.slice(-1000)); // Use a slice for speed or full string for accuracy
+  const msgUint8 = new TextEncoder().encode(base64Image.slice(-1000));
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
@@ -42,9 +55,10 @@ async function generateImageHash(base64Image: string): Promise<string> {
 
 export async function extractMedicineData(base64Image: string): Promise<ExtractionResult> {
   try {
+    if (!GEMINI_API_KEY) throw new Error("API Key is missing");
+
     const imageHash = await generateImageHash(base64Image);
     
-    // 1. Check backend cache first using hash
     const cacheResponse = await fetch('/api/ai/extract-cache', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -56,9 +70,8 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
       if (cached.found) return cached.data;
     }
 
-    // 2. Client-side AI extraction if not in cache
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       contents: [
         { text: "Extract medication details from this image. Return JSON with fields: name, dosage, expirationDate (YYYY-MM-DD), usageInstructions, schedule, form, quantity." },
         { inlineData: { mimeType: "image/jpeg", data: base64Image.split(',')[1] } }
@@ -74,7 +87,6 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
     const result = JSON.parse(text);
     const extractionResult = { success: true, medicine: result };
 
-    // 3. Save to backend cache
     fetch('/api/ai/extract-save-cache', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -83,15 +95,17 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
 
     return extractionResult;
   } catch (error: any) {
-    return { success: false, errorMessage: error.message || "Failed to extract data" };
+    console.error("Extraction error:", error);
+    return { success: false, errorMessage: getDetailedError(error) };
   }
 }
 
 export async function checkDrugInteractions(medicines: { name: string; dosage: string }[]): Promise<InteractionResult | null> {
   try {
+    if (!GEMINI_API_KEY) throw new Error("API Key is missing");
+
     const medNames = medicines.map(m => m.name).sort().join('|');
     
-    // 1. Check backend cache
     const cacheResponse = await fetch('/api/ai/interactions-cache', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -103,12 +117,11 @@ export async function checkDrugInteractions(medicines: { name: string; dosage: s
       if (cached.found) return cached.data;
     }
 
-    // 2. Client-side AI check
     const prompt = `Act as a medical expert. Check for drug-drug interactions between these medications: ${medicines.map(m => `${m.name} (${m.dosage})`).join(', ')}. 
     Return JSON: { hasInteractions: boolean, interactions: [{ medications: string[], severity: "low"|"moderate"|"high", description: string, recommendation: string }], generalAdvice: string }`;
     
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
@@ -117,7 +130,6 @@ export async function checkDrugInteractions(medicines: { name: string; dosage: s
     if (!text) throw new Error("AI returned empty response");
     const result = JSON.parse(text);
 
-    // 3. Save to backend cache
     fetch('/api/ai/interactions-save-cache', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -133,13 +145,15 @@ export async function checkDrugInteractions(medicines: { name: string; dosage: s
 
 export async function chatWithGemini(messages: ChatMessage[]): Promise<string> {
   try {
+    if (!GEMINI_API_KEY) throw new Error("API Key is missing");
+
     const history = messages.slice(0, -1).map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
       parts: [{ text: m.content }]
     }));
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       contents: [
         ...history,
         { role: 'user', parts: [{ text: messages[messages.length - 1].content }] }
@@ -152,6 +166,6 @@ export async function chatWithGemini(messages: ChatMessage[]): Promise<string> {
     return response.text || "I'm sorry, I couldn't generate a response.";
   } catch (error) {
     console.error('Chat failed:', error);
-    return "I'm having trouble connecting to my medical database. Please try again later.";
+    return `AI Connection Issue: ${getDetailedError(error)}`;
   }
 }
