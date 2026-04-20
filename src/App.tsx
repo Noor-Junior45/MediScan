@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Camera, Download, Upload, Info, Settings, Search, X, History, Trash2, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { Plus, Camera, Download, Upload, Info, Settings, Search, X, History, Trash2, ShieldAlert, CheckCircle2, Bot, Stethoscope } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Papa from 'papaparse';
 import { Medicine } from './types';
@@ -7,6 +7,7 @@ import { CameraCapture } from './components/CameraCapture';
 import { MedicineForm } from './components/MedicineForm';
 import { MedicineList } from './components/MedicineList';
 import { SettingsModal } from './components/SettingsModal';
+import { ChatView } from './components/ChatView';
 import { extractMedicineData } from './services/geminiService';
 import { 
   auth, db, storage, googleProvider, signInWithPopup, signOut, onAuthStateChanged, 
@@ -27,6 +28,7 @@ export default function App() {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -507,8 +509,10 @@ export default function App() {
       setIsFormOpen(false);
       setEditingMedicine(null);
       setExtractionWarning(null);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'medicines');
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setAlertMessage(`Error saving medicine: ${errorMessage.includes('{') ? 'Permission denied or invalid data' : errorMessage}`);
+      console.error('Firestore Save Error:', error);
     } finally {
       setIsSaving(false);
     }
@@ -1052,20 +1056,20 @@ export default function App() {
     <ErrorBoundary>
       <div className="min-h-screen bg-[#0a0a0a] text-white font-sans selection:bg-white selection:text-black">
       {/* Glossy Header */}
-      <header className="sticky top-0 z-40 bg-white/[0.01] backdrop-blur-3xl border-b border-white/5 px-4 py-4">
-        <div className="max-w-2xl mx-auto space-y-4">
+      <header className="sticky top-0 z-40 bg-white/[0.01] backdrop-blur-3xl border-b border-white/5 px-3 py-3 sm:px-4 sm:py-4">
+        <div className="max-w-2xl mx-auto space-y-3 sm:space-y-4">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold tracking-tighter bg-gradient-to-b from-accent to-accent/40 bg-clip-text text-transparent">
-                Mediscan
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tighter bg-gradient-to-b from-accent to-accent/40 bg-clip-text text-transparent">
+                DawaLens AI
               </h1>
-              <p className="text-white/40 text-[10px] font-medium uppercase tracking-[0.2em] mt-1">
-                AI Medicine Vault
+              <p className="text-white/40 text-[7px] sm:text-[10px] font-medium uppercase tracking-[0.2em] mt-0.5 sm:mt-1">
+                Your Digital Pharmacy
               </p>
             </div>
-            <div className="flex gap-2">
-              <label className="p-2 bg-white/5 border border-white/10 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer" title="Import from CSV">
-                <Upload size={18} />
+            <div className="flex gap-1.5 sm:gap-2">
+              <label className="p-1.5 sm:p-2 bg-white/5 border border-white/10 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer inline-flex items-center" title="Import from CSV">
+                <Upload size={16} className="sm:w-[18px] sm:h-[18px]" />
                 <input 
                   type="file" 
                   accept=".csv" 
@@ -1075,39 +1079,39 @@ export default function App() {
               </label>
               <button 
                 onClick={exportToSheets}
-                className="p-2 bg-white/5 border border-white/10 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-all"
+                className="p-1.5 sm:p-2 bg-white/5 border border-white/10 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-all"
                 title="Export to CSV (Google Sheets)"
               >
-                <Download size={18} />
+                <Download size={16} className="sm:w-[18px] sm:h-[18px]" />
               </button>
               <button 
                 onClick={() => setIsSettingsOpen(true)}
-                className="p-2 bg-white/5 border border-white/10 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-all"
+                className="p-1.5 sm:p-2 bg-white/5 border border-white/10 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-all"
               >
-                <Settings size={18} />
+                <Settings size={16} className="sm:w-[18px] sm:h-[18px]" />
               </button>
             </div>
           </div>
           
           {/* Search Bar moved to Navbar */}
           <div className="relative group">
-            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-white/20 group-focus-within:text-white/60 transition-colors">
-              <Search size={18} />
+            <div className="absolute inset-y-0 left-3 sm:left-4 flex items-center pointer-events-none text-white/20 group-focus-within:text-white/60 transition-colors">
+              <Search size={16} className="sm:w-[18px] sm:h-[18px]" />
             </div>
             <input 
               type="text" 
-              placeholder="Search by name, dosage, or instructions..."
+              placeholder="Search medications..."
               value={searchQuery || ''}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-12 focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20 text-sm"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-2.5 sm:py-3 pl-10 sm:pl-12 pr-10 sm:pr-12 focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20 text-xs sm:text-sm"
             />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')}
-                className="absolute inset-y-0 right-4 flex items-center text-white/20 hover:text-white/60 transition-colors"
+                className="absolute inset-y-0 right-3 sm:right-4 flex items-center text-white/20 hover:text-white/60 transition-colors"
                 title="Clear search"
               >
-                <X size={18} />
+                <X size={16} className="sm:w-[18px] sm:h-[18px]" />
               </button>
             )}
           </div>
@@ -1117,19 +1121,19 @@ export default function App() {
       <main className="max-w-2xl mx-auto pt-6 pb-32">
         {/* Stats / Info */}
         <div className="px-4 mb-6 grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-lg ring-1 ring-white/5">
-            <p className="text-white/40 text-[9px] uppercase tracking-widest font-bold mb-1">Total</p>
-            <p className="text-2xl font-bold tracking-tight">{medicines.length}</p>
+          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-3 sm:p-4 shadow-lg ring-1 ring-white/5">
+            <p className="text-white/40 text-[7px] sm:text-[9px] uppercase tracking-widest font-bold mb-1">Total</p>
+            <p className="text-xl sm:text-2xl font-bold tracking-tight">{medicines.length}</p>
           </div>
-          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-lg ring-1 ring-white/5">
-            <p className="text-white/40 text-[9px] uppercase tracking-widest font-bold mb-1">Unique</p>
-            <p className="text-2xl font-bold tracking-tight text-blue-400">
+          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-3 sm:p-4 shadow-lg ring-1 ring-white/5">
+            <p className="text-white/40 text-[7px] sm:text-[9px] uppercase tracking-widest font-bold mb-1">Unique</p>
+            <p className="text-xl sm:text-2xl font-bold tracking-tight text-blue-400">
               {new Set(medicines.map(m => m.name.toLowerCase().trim())).size}
             </p>
           </div>
-          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-lg ring-1 ring-white/5">
-            <p className="text-white/40 text-[9px] uppercase tracking-widest font-bold mb-1">Expiring</p>
-            <p className="text-2xl font-bold tracking-tight text-orange-400">
+          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-3 sm:p-4 shadow-lg ring-1 ring-white/5">
+            <p className="text-white/40 text-[7px] sm:text-[9px] uppercase tracking-widest font-bold mb-1">Expiring</p>
+            <p className="text-xl sm:text-2xl font-bold tracking-tight text-orange-400">
               {medicines.filter(m => {
                 const expiry = new Date(m.expirationDate);
                 const today = new Date();
@@ -1147,9 +1151,9 @@ export default function App() {
               }).length}
             </p>
           </div>
-          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-lg ring-1 ring-white/5">
-            <p className="text-white/40 text-[9px] uppercase tracking-widest font-bold mb-1">Taken</p>
-            <p className="text-2xl font-bold tracking-tight text-emerald-400">
+          <div className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-2xl p-3 sm:p-4 shadow-lg ring-1 ring-white/5">
+            <p className="text-white/40 text-[7px] sm:text-[9px] uppercase tracking-widest font-bold mb-1">Taken</p>
+            <p className="text-xl sm:text-2xl font-bold tracking-tight text-emerald-400">
               {medicines.filter(m => m.taken).length}
             </p>
           </div>
@@ -1234,17 +1238,12 @@ export default function App() {
           <div className="w-px h-8 bg-white/10 mx-1"></div>
 
           <button 
-            onClick={handleCheckInteractions}
-            disabled={isCheckingInteractions}
-            className="flex-1 py-2 flex flex-col items-center gap-1 transition-all disabled:opacity-30"
+            onClick={() => setIsChatOpen(true)}
+            className="flex-1 py-2 flex flex-col items-center gap-1 transition-all"
             style={{ color: 'var(--accent-color)' }}
           >
-            {isCheckingInteractions ? (
-              <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <ShieldAlert size={20} />
-            )}
-            <span className="text-[9px] font-bold uppercase tracking-widest">Safety</span>
+            <Stethoscope size={20} />
+            <span className="text-[9px] font-bold uppercase tracking-widest">Consult</span>
           </button>
 
           <div className="w-px h-8 bg-white/10 mx-1"></div>
@@ -1289,6 +1288,7 @@ export default function App() {
         {isFormOpen && (
           <MedicineForm 
             medicine={editingMedicine}
+            allMedicines={medicines}
             onSave={handleSave}
             onDelete={handleDelete}
             extractionWarning={extractionWarning}
@@ -1298,6 +1298,15 @@ export default function App() {
               setEditingMedicine(null);
               setExtractionWarning(null);
             }}
+          />
+        )}
+
+        {isChatOpen && (
+          <ChatView 
+            medicines={medicines}
+            onClose={() => setIsChatOpen(false)}
+            user={user}
+            userPhoto={user?.photoURL}
           />
         )}
 

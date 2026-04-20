@@ -1,7 +1,7 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import { MedicineForm } from "../types";
+import { MedicineForm, ChatMessage } from "../types";
+import { GoogleGenAI } from "@google/genai";
 
-const ai = null; // Initialized inside function
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export interface ExtractedMedicine {
   name: string;
@@ -20,159 +20,133 @@ export interface ExtractionResult {
   medicine?: ExtractedMedicine;
 }
 
-export async function extractMedicineData(base64Image: string): Promise<ExtractionResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  
-  if (!apiKey) {
-    console.error("GEMINI_API_KEY is missing from environment");
-    return {
-      success: false,
-      errorMessage: "AI service is not configured. Please ensure the Gemini API key is set in the environment variables."
-    };
-  }
-
-  // Create a new instance right before the call as recommended
-  const ai = new GoogleGenAI({ apiKey });
-
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", // Updated to the latest recommended model
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: "image/jpeg",
-              data: base64Image,
-            },
-          },
-          {
-            text: "Analyze this image for medicine details. If readable, set 'success' to true and extract the medicine name, dosage, quantity, expiration date, usage instructions, and medication schedule (e.g., 'Twice a day', 'Every 8 hours'). Also identify the medicine form: 'tablet', 'capsule', 'syrup', 'ampule', 'powder', 'tape', 'liquid', or 'other'. IMPORTANT: Distinguish between Manufacturing Date (Mfg) and Expiration Date (Exp). Only return the Expiration Date. CRITICAL: If ONLY the medicine name is visible but other details (dosage, expiration date, etc.) are missing, STILL set 'success' to true. Extract the name, and use your general medical knowledge to fill in common usage instructions, typical dosage, a placeholder expiration date (e.g., 1 year from now), and a typical schedule. Set 'warningMessage' to inform the user that some data was missing from the image and was inferred, and remind them to verify the details manually.",
-          },
-        ],
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            success: { type: Type.BOOLEAN, description: "True if medicine details were successfully extracted, false if unreadable." },
-            errorMessage: { type: Type.STRING, description: "Specific feedback on why extraction failed (blurry, dark, etc.)" },
-            warningMessage: { type: Type.STRING, description: "Warning if some data was inferred from general knowledge because it was missing from the image." },
-            medicine: {
-              type: Type.OBJECT,
-              properties: {
-                name: { type: Type.STRING, description: "Name of the medicine" },
-                dosage: { type: Type.STRING, description: "Dosage info (e.g., 500mg)" },
-                quantity: { type: Type.NUMBER, description: "Quantity of medicine (e.g., 30 for 30 pills, 100 for 100ml). Return a number." },
-                expirationDate: { type: Type.STRING, description: "Expiration date in YYYY-MM-DD format if possible, or as seen" },
-                usageInstructions: { type: Type.STRING, description: "Usage instructions or notes" },
-                schedule: { type: Type.STRING, description: "Medication schedule (e.g., 'Twice a day')" },
-                form: { type: Type.STRING, description: "Medicine form: 'tablet', 'capsule', 'syrup', 'ampule', 'powder', 'tape', 'liquid', or 'other'" },
-              },
-              required: ["name", "dosage", "expirationDate"],
-            }
-          },
-          required: ["success"],
-        },
-      },
-    });
-
-    if (!response.text) {
-      throw new Error("The AI returned an empty response.");
-    }
-
-    let cleanText = response.text.trim();
-    // Handle potential markdown wrapping even with JSON mime type
-    if (cleanText.startsWith("```")) {
-      cleanText = cleanText.replace(/^```(?:json)?/, "").replace(/```$/, "").trim();
-    }
-
-    const result = JSON.parse(cleanText);
-    return result as ExtractionResult;
-  } catch (error: any) {
-    console.error("Detailed AI Extraction Error:", error);
-    
-    let userMessage = "An unexpected error occurred while communicating with the AI. Please try again.";
-    
-    if (error.message?.includes("API key not valid")) {
-      userMessage = "The Gemini API key is invalid. Please check your configuration in the Secrets panel.";
-    } else if (error.message?.includes("Requested entity was not found") || error.message?.includes("model not found")) {
-      userMessage = "The AI model could not be reached or is unavailable in your region. Please try again later.";
-    } else if (error.message?.includes("Quota exceeded") || error.message?.includes("429")) {
-      userMessage = "AI usage limit reached. Please try again in a few minutes.";
-    } else if (error instanceof SyntaxError) {
-      userMessage = "Failed to parse the AI response. Please try capturing the image again with better lighting.";
-    } else if (error.message?.includes("User location is not supported")) {
-      userMessage = "The Gemini AI service is not available in your current location.";
-    }
-
-    return {
-      success: false,
-      errorMessage: userMessage
-    };
-  }
+export interface Interaction {
+  medications: string[];
+  severity: "low" | "moderate" | "high";
+  description: string;
+  recommendation: string;
 }
 
 export interface InteractionResult {
   hasInteractions: boolean;
-  interactions: {
-    medications: string[];
-    severity: "low" | "moderate" | "high";
-    description: string;
-    recommendation: string;
-  }[];
+  interactions: Interaction[];
   generalAdvice: string;
 }
 
-export async function checkDrugInteractions(medicines: { name: string; dosage: string }[]): Promise<InteractionResult | null> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || medicines.length < 2) return null;
+async function generateImageHash(base64Image: string): Promise<string> {
+  const msgUint8 = new TextEncoder().encode(base64Image.slice(-1000)); // Use a slice for speed or full string for accuracy
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
-  const ai = new GoogleGenAI({ apiKey });
-
+export async function extractMedicineData(base64Image: string): Promise<ExtractionResult> {
   try {
-    const medicineList = medicines.map(m => `${m.name} (${m.dosage})`).join(", ");
+    const imageHash = await generateImageHash(base64Image);
+    
+    // 1. Check backend cache first using hash
+    const cacheResponse = await fetch('/api/ai/extract-cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageHash })
+    });
+    
+    if (cacheResponse.ok) {
+      const cached = await cacheResponse.json();
+      if (cached.found) return cached.data;
+    }
+
+    // 2. Client-side AI extraction if not in cache
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Analyze the following list of medications for potential drug-to-drug interactions: ${medicineList}. 
-      Identify specific interactions between pairs or groups of medications. 
-      For each interaction, provide the medications involved, the severity (low, moderate, high), a description of the interaction, and a recommendation. 
-      Also provide a general advice summary for the user.
-      If no interactions are found, set 'hasInteractions' to false and 'interactions' to an empty array.`,
+      contents: [
+        { text: "Extract medication details from this image. Return JSON with fields: name, dosage, expirationDate (YYYY-MM-DD), usageInstructions, schedule, form, quantity." },
+        { inlineData: { mimeType: "image/jpeg", data: base64Image.split(',')[1] } }
+      ],
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            hasInteractions: { type: Type.BOOLEAN },
-            interactions: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  medications: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  severity: { type: Type.STRING, enum: ["low", "moderate", "high"] },
-                  description: { type: Type.STRING },
-                  recommendation: { type: Type.STRING },
-                },
-                required: ["medications", "severity", "description", "recommendation"],
-              },
-            },
-            generalAdvice: { type: Type.STRING },
-          },
-          required: ["hasInteractions", "interactions", "generalAdvice"],
-        },
-      },
+        responseMimeType: "application/json"
+      }
     });
 
-    if (!response.text) return null;
-    let cleanText = response.text.trim();
-    if (cleanText.startsWith("```")) {
-      cleanText = cleanText.replace(/^```(?:json)?/, "").replace(/```$/, "").trim();
+    const result = JSON.parse(response.text);
+    const extractionResult = { success: true, medicine: result };
+
+    // 3. Save to backend cache
+    fetch('/api/ai/extract-save-cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageHash, data: extractionResult })
+    }).catch(console.warn);
+
+    return extractionResult;
+  } catch (error: any) {
+    return { success: false, errorMessage: error.message || "Failed to extract data" };
+  }
+}
+
+export async function checkDrugInteractions(medicines: { name: string; dosage: string }[]): Promise<InteractionResult | null> {
+  try {
+    const medNames = medicines.map(m => m.name).sort().join('|');
+    
+    // 1. Check backend cache
+    const cacheResponse = await fetch('/api/ai/interactions-cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: medNames })
+    });
+
+    if (cacheResponse.ok) {
+      const cached = await cacheResponse.json();
+      if (cached.found) return cached.data;
     }
-    return JSON.parse(cleanText) as InteractionResult;
+
+    // 2. Client-side AI check
+    const prompt = `Act as a medical expert. Check for drug-drug interactions between these medications: ${medicines.map(m => `${m.name} (${m.dosage})`).join(', ')}. 
+    Return JSON: { hasInteractions: boolean, interactions: [{ medications: string[], severity: "low"|"moderate"|"high", description: string, recommendation: string }], generalAdvice: string }`;
+    
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+
+    const result = JSON.parse(response.text);
+
+    // 3. Save to backend cache
+    fetch('/api/ai/interactions-save-cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: medNames, data: result })
+    }).catch(console.warn);
+
+    return result;
   } catch (error) {
-    console.error("Interaction Check Error:", error);
+    console.error('Interaction check failed:', error);
     return null;
+  }
+}
+
+export async function chatWithGemini(messages: ChatMessage[]): Promise<string> {
+  try {
+    const history = messages.slice(0, -1).map(m => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content }]
+    }));
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [
+        ...history,
+        { role: 'user', parts: [{ text: messages[messages.length - 1].content }] }
+      ],
+      config: {
+        systemInstruction: "You are a professional, empathetic, and knowledgeable Medical Doctor. Your goal is to provide clear, helpful, and safe advice regarding medications and general health. ALWAYS emphasize that your advice is informational and users should consult a physical doctor for critical issues. Use markdown formatting for clarity."
+      }
+    });
+
+    return response.text;
+  } catch (error) {
+    console.error('Chat failed:', error);
+    return "I'm having trouble connecting to my medical database. Please try again later.";
   }
 }

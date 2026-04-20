@@ -59,9 +59,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const colors = [
     { name: 'Orange', value: '#f97316' },
+    { name: 'Rose', value: '#e11d48' },
     { name: 'Emerald', value: '#10b981' },
     { name: 'Violet', value: '#8b5cf6' },
     { name: 'Sky', value: '#0ea5e9' },
+    { name: 'Amber', value: '#d97706' },
   ];
 
   return (

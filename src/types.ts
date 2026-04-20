@@ -27,4 +27,19 @@ export interface Medicine {
   form?: MedicineForm;
 }
 
+export interface ChatMessage {
+  id?: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: number;
+}
+
+export interface ChatSession {
+  id: string;
+  userId: string;
+  title: string;
+  createdAt: number;
+  lastMessageAt: number;
+}
+
 export const STORAGE_KEY = "mediscan_medicines";

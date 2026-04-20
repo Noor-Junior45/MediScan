@@ -31,7 +31,7 @@ service cloud.firestore {
 
     function isValidMedicine(data) {
       return data.keys().hasAll(['id', 'name', 'dosage', 'expirationDate', 'userId', 'createdAt']) &&
-             data.keys().hasOnly(['id', 'name', 'dosage', 'expirationDate', 'userId', 'createdAt', 'usageInstructions', 'capturedImage', 'taken', 'quantity', 'isDeleted', 'deletedAt', 'form']) &&
+             data.keys().hasOnly(['id', 'name', 'dosage', 'expirationDate', 'userId', 'createdAt', 'usageInstructions', 'capturedImage', 'imageUrl', 'taken', 'quantity', 'isDeleted', 'deletedAt', 'form', 'schedule']) &&
              data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
              data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
              data.dosage is string && data.dosage.size() < 100 &&
@@ -58,6 +58,24 @@ service cloud.firestore {
              data.details is string && data.details.size() < 2000;
     }
 
+    function isValidChatSession(data) {
+      return data.keys().hasAll(['id', 'userId', 'title', 'createdAt', 'lastMessageAt']) &&
+             data.keys().hasOnly(['id', 'userId', 'title', 'createdAt', 'lastMessageAt']) &&
+             data.userId == request.auth.uid &&
+             data.id is string &&
+             data.title is string && data.title.size() < 200 &&
+             data.createdAt is number &&
+             data.lastMessageAt is number;
+    }
+
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['role', 'content', 'timestamp']) &&
+             data.keys().hasOnly(['id', 'role', 'content', 'timestamp']) &&
+             data.role in ['user', 'assistant', 'system'] &&
+             data.content is string && data.content.size() < 5000 &&
+             data.timestamp is number;
+    }
+
     match /medicines/{medicineId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && isValidMedicine(request.resource.data);
@@ -69,6 +87,25 @@ service cloud.firestore {
         allow create: if isAuthenticated() && isValidMedicineHistory(request.resource.data) && request.resource.data.medicineId == medicineId;
         allow update: if false; // History should be immutable
         allow delete: if isAuthenticated() && (exists(/databases/$(database)/documents/medicines/$(medicineId)) && get(/databases/$(database)/documents/medicines/$(medicineId)).data.userId == request.auth.uid || isAdmin());
+      }
+    }
+
+    match /users/{userId} {
+      match /settings/appSettings {
+        allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+        allow create: if isAuthenticated() && request.auth.uid == userId && isValidUserConfig(request.resource.data);
+        allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin()) && isValidUserConfig(request.resource.data);
+        allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      }
+
+      match /chats/{sessionId} {
+        allow read, delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+        allow create, update: if isAuthenticated() && request.auth.uid == userId && isValidChatSession(request.resource.data);
+        
+        match /messages/{messageId} {
+          allow read, delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+          allow create, update: if isAuthenticated() && request.auth.uid == userId && isValidChatMessage(request.resource.data);
+        }
       }
     }
 

@@ -51,6 +51,31 @@
         "theme": { "type": "string", "enum": ["system", "light", "dark"] }
       },
       "required": ["userId", "email"]
+    },
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "An AI chat conversation session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "lastMessageAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "title", "createdAt", "lastMessageAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A message within a chat session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant", "system"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "role", "content", "timestamp"]
     }
   },
   "firestore": {
@@ -65,6 +90,14 @@
     "/users/{userId}/settings/appSettings": {
       "schema": "UserConfig",
       "description": "User configuration and preferences"
+    },
+    "/users/{userId}/chats/{sessionId}": {
+      "schema": "ChatSession",
+      "description": "User's AI chat sessions"
+    },
+    "/users/{userId}/chats/{sessionId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Messages within a chat session"
     }
   }
 }

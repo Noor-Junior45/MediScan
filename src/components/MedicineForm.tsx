@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Medicine, MedicineHistory } from '../types';
-import { X, Save, Trash2, Eye, AlertTriangle, History, Clock } from 'lucide-react';
+import { X, Save, Trash2, Eye, AlertTriangle, History, Clock, Sparkles, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, collection, query, orderBy, onSnapshot, handleFirestoreError, OperationType } from '../firebase';
 import { MEDICINE_FORM_ICONS, MEDICINE_FORM_LABELS } from '../constants';
@@ -13,9 +13,12 @@ interface MedicineFormProps {
   onClose: () => void;
   extractionWarning?: string | null;
   isSaving?: boolean;
+  allMedicines?: Medicine[];
 }
 
-export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, onDelete, onClose, extractionWarning, isSaving }) => {
+export const MedicineForm: React.FC<MedicineFormProps> = ({ 
+  medicine, onSave, onDelete, onClose, extractionWarning, isSaving, allMedicines = [] 
+}) => {
   const [formData, setFormData] = useState<Partial<Medicine>>({
     name: '',
     dosage: '',
@@ -27,12 +30,49 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
   });
   const [history, setHistory] = useState<MedicineHistory[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [suggestions, setSuggestions] = useState<Medicine[]>([]);
 
   useEffect(() => {
     if (medicine) {
       setFormData(medicine);
     }
   }, [medicine]);
+
+  const handleNameChange = (name: string) => {
+    setFormData({ ...formData, name });
+    
+    // Clear previous timeout
+    const timeoutId = (window as any)._suggestionTimeout;
+    if (timeoutId) clearTimeout(timeoutId);
+
+    if (name.length > 1) {
+      (window as any)._suggestionTimeout = setTimeout(() => {
+        const filtered = allMedicines.filter(m => 
+          m.name.toLowerCase().includes(name.toLowerCase()) && 
+          m.id !== medicine?.id
+        );
+        // Unique suggestions by name/dosage/form
+        const unique = filtered.filter((m, index, self) => 
+          index === self.findIndex((t) => t.name === m.name && t.dosage === m.dosage && t.form === m.form)
+        ).slice(0, 3);
+        setSuggestions(unique);
+      }, 150); // 150ms debounce
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const applySuggestion = (suggested: Medicine) => {
+    setFormData({
+      ...formData,
+      name: suggested.name,
+      dosage: suggested.dosage,
+      form: suggested.form,
+      usageInstructions: suggested.usageInstructions || formData.usageInstructions,
+      schedule: suggested.schedule || formData.schedule
+    });
+    setSuggestions([]);
+  };
 
   useEffect(() => {
     if (!medicine?.id) return;
@@ -178,17 +218,68 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
                   </div>
                 )}
 
+                <div className="mx-6 mt-6 p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="text-indigo-400" size={16} />
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-indigo-200/80">Treatment Guide</h4>
+                  </div>
+                  <div className="space-y-3">
+                    {formData.usageInstructions && (
+                      <div>
+                        <p className="text-[9px] text-white/40 uppercase tracking-wider font-bold mb-0.5">Instructions</p>
+                        <p className="text-xs text-white/80 leading-relaxed">{formData.usageInstructions}</p>
+                      </div>
+                    )}
+                    {formData.schedule && (
+                      <div>
+                        <p className="text-[9px] text-white/40 uppercase tracking-wider font-bold mb-0.5">Schedule</p>
+                        <p className="text-xs text-indigo-300 font-medium">{formData.schedule}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <form id="medicine-form" onSubmit={handleSubmit} className="p-6 space-y-5">
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 relative">
                     <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Medicine Name</label>
                     <input
                       required
                       type="text"
                       value={formData.name || ''}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      onChange={(e) => handleNameChange(e.target.value)}
                       className="w-full bg-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-white/20"
                       placeholder="e.g. Paracetamol"
                     />
+                    
+                    <AnimatePresence>
+                      {suggestions.length > 0 && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="absolute z-10 left-0 right-0 mt-2 bg-[#252525] border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
+                        >
+                          <div className="p-2 border-b border-white/5 bg-white/5 flex items-center gap-2">
+                            <Sparkles size={10} className="text-accent" />
+                            <span className="text-[8px] font-bold uppercase tracking-widest text-white/40">Smart Fill Suggestions</span>
+                          </div>
+                          {suggestions.map((s, idx) => (
+                            <button
+                              key={s.id || idx}
+                              type="button"
+                              onClick={() => applySuggestion(s)}
+                              className="w-full text-left p-3 hover:bg-white/5 flex items-center justify-between border-b border-white/5 last:border-0 transition-colors"
+                            >
+                              <div className="flex flex-col">
+                                <span className="text-sm font-bold text-white">{s.name}</span>
+                                <span className="text-[10px] text-white/40">{s.dosage} • {MEDICINE_FORM_LABELS[s.form || 'other']}</span>
+                              </div>
+                              <Plus size={14} className="text-accent/40" />
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   <div className="space-y-1.5">
@@ -224,8 +315,13 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({ medicine, onSave, on
                           placeholder="e.g. 500mg"
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Quantity</label>
+                      <div className="space-y-1.5 overflow-hidden">
+                        <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1 flex justify-between items-center">
+                          Stock
+                          {formData.quantity !== undefined && formData.quantity < 5 && (
+                            <span className="text-red-400 text-[8px] animate-pulse">Low!</span>
+                          )}
+                        </label>
                         <input
                           type="number"
                           min="0"

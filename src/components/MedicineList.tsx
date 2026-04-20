@@ -97,8 +97,8 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
   }
 
   return (
-    <div className="space-y-3 px-4 pb-24">
-      <div className="flex justify-between items-center mb-4">
+    <div className="space-y-2 px-2 sm:px-4 pb-24">
+      <div className="flex justify-between items-center mb-3 px-2">
         <button 
           onClick={() => {
             if (isSelectionMode) {
@@ -217,62 +217,49 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
               </div>
             )}
             
-            <div className="flex justify-between items-start mb-3">
-              <div className="flex items-start gap-3 flex-1">
+            <div className="flex justify-between items-start mb-2">
+              <div className="flex items-start gap-2.5 flex-1 overflow-hidden">
                 {isSelectionMode && (
-                  <div className="mt-1 text-white/40">
-                    {isSelected ? <CheckSquare size={20} className="text-white" /> : <Square size={20} />}
+                  <div className="mt-1 text-white/40 shrink-0">
+                    {isSelected ? <CheckSquare size={18} className="text-white" /> : <Square size={18} />}
                   </div>
                 )}
-                <div className={`flex-1 ${med.taken && !isSelectionMode ? 'cursor-default' : 'cursor-pointer'}`}>
-                  <h3 className={`font-semibold text-lg tracking-tight transition-colors flex items-center gap-2 ${med.taken ? 'text-white/40 line-through' : 'text-white group-hover:text-white'}`}>
-                    {med.name}
-                    {med.form && MEDICINE_FORM_ICONS[med.form]}
+                <div className={`flex-1 min-w-0 ${med.taken && !isSelectionMode ? 'cursor-default' : 'cursor-pointer'}`}>
+                  <h3 className={`font-semibold text-base sm:text-lg tracking-tight transition-colors flex items-center gap-1.5 ${med.taken ? 'text-white/40 line-through' : 'text-white group-hover:text-white'}`}>
+                    <span className="truncate">{med.name}</span>
+                    <span className="shrink-0 scale-90 sm:scale-100">{med.form && MEDICINE_FORM_ICONS[med.form]}</span>
                   </h3>
-                  <div className="flex items-center gap-3 mt-1 flex-wrap">
-                    <span className="flex items-center gap-1.5 text-white/40 text-xs">
-                      <Package size={12} />
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <span className="flex items-center gap-1 text-white/40 text-[10px] sm:text-xs">
+                      <Package size={10} className="sm:w-[12px]" />
                       {med.dosage}
                     </span>
                     {med.schedule && (
-                      <span className="flex items-center gap-1.5 text-indigo-400 text-xs font-medium">
-                        <Clock size={12} />
-                        {med.schedule}
+                      <span className="flex items-center gap-1 text-indigo-400 text-[10px] sm:text-xs font-medium">
+                        <Clock size={10} className="sm:w-[12px]" />
+                        <span className="truncate max-w-[120px]">{med.schedule}</span>
                       </span>
                     )}
                     {!med.taken && (
-                      <span className={`flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>
-                        <status.Icon size={12} />
+                      <span className={`flex items-center gap-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>
                         {status.label}
-                      </span>
-                    )}
-                    {!med.taken && med.quantity !== undefined && (
-                      <span className={`flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${isLowQuantity ? 'bg-yellow-500/10 text-yellow-500' : 'bg-white/10 text-white/50'}`}>
-                        <Pill size={12} />
-                        {med.quantity} left
-                      </span>
-                    )}
-                    {med.taken && (
-                      <span className="flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 text-white/50">
-                        <CheckCircle2 size={12} />
-                        Taken
                       </span>
                     )}
                   </div>
                 </div>
               </div>
               {!isSelectionMode && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                   {!med.taken && med.quantity !== undefined && med.quantity > 0 && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onReduceQuantity(med);
                       }}
-                      className="p-2 bg-white/5 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-all"
+                      className="p-2 sm:p-2.5 bg-white/5 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-all active:scale-90"
                       title="Reduce quantity"
                     >
-                      <Minus size={18} />
+                      <Minus size={16} />
                     </button>
                   )}
                   <button
@@ -280,40 +267,35 @@ export const MedicineList: React.FC<MedicineListProps> = ({ medicines, onEdit, o
                       e.stopPropagation();
                       onToggleTaken(med);
                     }}
-                    className={`p-2 rounded-full transition-all ${
+                    className={`p-2 sm:p-2.5 rounded-full transition-all active:scale-90 ${
                       med.taken 
                         ? 'bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/30' 
                         : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'
                     }`}
                     title={med.taken ? "Mark as not taken" : "Mark as taken"}
                   >
-                    <CheckCircle2 size={20} />
+                    <CheckCircle2 size={18} />
                   </button>
-                  {!med.taken && (
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEdit(med);
-                      }}
-                      className="p-2 bg-white/5 rounded-full text-white/20 hover:text-white/60 transition-all"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                  )}
                 </div>
               )}
             </div>
             
-            <div className={`flex items-center gap-2 text-white/60 text-sm ${isSelectionMode ? 'pl-8' : ''}`}>
-              <Calendar size={14} className="text-white/30" />
-              <span className={`font-mono text-xs tracking-wider ${med.taken ? 'line-through opacity-50' : ''}`}>
-                Exp: {expiry.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </span>
+            <div className={`flex items-center justify-between mt-2 pt-2 border-t border-white/5 ${isSelectionMode ? 'ml-7' : ''}`}>
+              <div className="flex items-center gap-1.5 text-white/30 text-[10px] font-mono">
+                <Calendar size={12} />
+                <span>EXP: {expiry.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+              </div>
+              
+              {!med.taken && med.quantity !== undefined && (
+                <div className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${isLowQuantity ? 'text-yellow-500 bg-yellow-500/10' : 'text-white/40 bg-white/5'}`}>
+                  {med.quantity} LEFT
+                </div>
+              )}
             </div>
 
-            {med.usageInstructions && (
-              <p className={`mt-3 text-white/30 text-xs line-clamp-1 italic ${med.taken ? 'line-through opacity-50' : ''} ${isSelectionMode ? 'pl-8' : ''}`}>
-                "{med.usageInstructions}"
+            {med.usageInstructions && !med.taken && (
+              <p className={`mt-2 text-white/30 text-[10px] line-clamp-1 italic ${isSelectionMode ? 'ml-7' : ''}`}>
+                {med.usageInstructions}
               </p>
             )}
           </motion.div>
