@@ -40,6 +40,9 @@ export interface ChatSession {
   title: string;
   createdAt: number;
   lastMessageAt: number;
+  provider?: AIProvider;
 }
+
+export type AIProvider = 'gemini' | 'deepseek';
 
 export const STORAGE_KEY = "mediscan_medicines";

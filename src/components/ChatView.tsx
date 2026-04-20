@@ -12,8 +12,8 @@ import {
   getDocs, getDoc, setDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Medicine, ChatMessage, ChatSession } from '../types';
-import { chatWithGemini } from '../services/geminiService';
+import { Medicine, ChatMessage, ChatSession, AIProvider } from '../types';
+import { chatWithAI, isProviderKeyMissing } from '../services/geminiService';
 import ReactMarkdown from 'react-markdown';
 
 interface ChatViewProps {
@@ -40,6 +40,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
   const [searchQuery, setSearchQuery] = useState('');
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [disclaimerTimeLeft, setDisclaimerTimeLeft] = useState(30);
+  const [activeProvider, setActiveProvider] = useState<AIProvider>('gemini');
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -205,7 +206,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
       
       const promptHistory = historyContext.slice(0, -1).concat(lastMsgWithContext);
 
-      const aiResponse = await chatWithGemini(promptHistory);
+      const aiResponse = await chatWithAI(promptHistory, activeProvider);
 
       const aiMsgId = crypto.randomUUID();
       const aiMsg: ChatMessage = {
@@ -341,10 +342,32 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-white/60">
           <History size={20} />
         </button>
-        <div className="flex items-center gap-2">
-          <Bot className="text-accent" size={20} />
-          <span className="font-bold text-white text-sm">Consultation</span>
-        </div>
+                {/* AI Provider Toggle */}
+                <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5">
+                  <button 
+                    onClick={() => setActiveProvider('gemini')}
+                    className={`flex-1 py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all relative flex items-center justify-center gap-1.5 ${
+                      activeProvider === 'gemini' ? 'bg-accent text-black shadow-lg' : 'text-white/40 hover:text-white'
+                    }`}
+                  >
+                    Gemini
+                    {isProviderKeyMissing('gemini') && <AlertCircle size={10} className={activeProvider === 'gemini' ? 'text-black' : 'text-red-500'} />}
+                  </button>
+                  <button 
+                    onClick={() => setActiveProvider('deepseek')}
+                    className={`flex-1 py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all relative flex items-center justify-center gap-1.5 ${
+                      activeProvider === 'deepseek' ? 'bg-accent text-black shadow-lg' : 'text-white/40 hover:text-white'
+                    }`}
+                  >
+                    DeepSeek
+                    {isProviderKeyMissing('deepseek') && <AlertCircle size={10} className={activeProvider === 'deepseek' ? 'text-black' : 'text-red-500'} />}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Bot className="text-accent" size={20} />
+                  <span className="font-bold text-white text-sm">Consultation</span>
+                </div>
         <button onClick={onClose} className="p-2 text-white/60">
           <X size={20} />
         </button>
@@ -457,6 +480,29 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
                 <History size={20} />
               </button>
             )}
+            
+            {/* AI Provider Toggle Desktop */}
+            <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5 mx-2">
+              <button 
+                onClick={() => setActiveProvider('gemini')}
+                className={`py-1.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                  activeProvider === 'gemini' ? 'bg-accent text-black shadow-lg shadow-accent/20' : 'text-white/40 hover:text-white'
+                }`}
+              >
+                Gemini
+                {isProviderKeyMissing('gemini') && <AlertCircle size={10} className={activeProvider === 'gemini' ? 'text-black' : 'text-red-500'} />}
+              </button>
+              <button 
+                onClick={() => setActiveProvider('deepseek')}
+                className={`py-1.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                  activeProvider === 'deepseek' ? 'bg-accent text-black shadow-lg shadow-accent/20' : 'text-white/40 hover:text-white'
+                }`}
+              >
+                DeepSeek
+                {isProviderKeyMissing('deepseek') && <AlertCircle size={10} className={activeProvider === 'deepseek' ? 'text-black' : 'text-red-500'} />}
+              </button>
+            </div>
+
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent shadow-lg shadow-accent/5">
                 <Bot size={28} />
@@ -556,7 +602,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
                     </div>
                     <div className="flex items-center gap-2 mt-2 px-1">
                       <span className="text-[10px] text-white/20 font-bold uppercase tracking-widest">
-                        {msg.role === 'user' ? 'Patient' : 'Dr. DawaLens AI'}
+                        {msg.role === 'user' ? 'Patient' : `Dr. DawaLens (${activeProvider.toUpperCase()})`}
                       </span>
                       <span className="w-1 h-1 rounded-full bg-white/10" />
                       <span className="text-[10px] text-white/20 font-medium">

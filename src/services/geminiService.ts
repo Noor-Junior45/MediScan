@@ -2,19 +2,43 @@ import { MedicineForm, ChatMessage } from "../types";
 import { GoogleGenAI } from "@google/genai";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY || '' });
 
+export const isProviderKeyMissing = (provider: 'gemini' | 'deepseek') => {
+  if (provider === 'gemini') return !GEMINI_API_KEY;
+  if (provider === 'deepseek') return !DEEPSEEK_API_KEY;
+  return false;
+};
+
 // Helper to provide descriptive errors for better diagnostics in India/Global regions
-const getDetailedError = (error: any) => {
-  if (!GEMINI_API_KEY) return "API Key is missing. Please set GEMINI_API_KEY in your deployment environment variables.";
+const getDetailedError = (error: any, provider: 'gemini' | 'deepseek' = 'gemini') => {
+  if (provider === 'gemini' && !GEMINI_API_KEY) return "Gemini API Key is missing. Please go to 'Settings' (gear icon) -> 'Secrets' in the AI Studio menu to add your GEMINI_API_KEY.";
+  if (provider === 'deepseek' && !DEEPSEEK_API_KEY) return "DeepSeek API Key is missing. Please go to 'Settings' (gear icon) -> 'Secrets' in the AI Studio menu to add your DEEPSEEK_API_KEY.";
   
   const msg = error.message || String(error);
-  if (msg.includes('403')) return "Access Denied (403). Your API Key might be restricted, or the Generative Language API is not enabled for your project.";
-  if (msg.includes('404')) return "Model Not Found (404). The AI engine is currently unavailable for this key/region. Please try a different API key.";
-  if (msg.includes('429')) return "Quota Exceeded (429). Too many requests. Please wait a minute.";
   
-  return msg || "An unexpected AI connection error occurred.";
+  // Specific DeepSeek error handling
+  if (provider === 'deepseek') {
+    if (msg.toLowerCase().includes('insufficient balance')) {
+      return "DeepSeek account has no balance. Please top up your credits at platform.deepseek.com.";
+    }
+    if (msg.toLowerCase().includes('invalid') || msg.includes('401')) {
+      return "DeepSeek API Key is invalid or incorrect. Please check your key at platform.deepseek.com and update it in 'Settings' -> 'Secrets'.";
+    }
+  }
+
+  // Specific Gemini error handling
+  if (provider === 'gemini') {
+    if (msg.includes('403')) return "Gemini Access Denied (403). Ensure the 'Generative Language API' is enabled in your Google Cloud project and your key is correct.";
+    if (msg.includes('404')) return "Gemini Model Not Found (404). Switching to the latest stable preview model. Ensure your API key is valid.";
+    if (msg.includes('429')) return "Gemini Quota Exceeded (429). You are using the free tier. Please wait a minute before trying again.";
+  }
+  
+  return msg || `An unexpected ${provider} connection error occurred.`;
 };
+
+const SYSTEM_INSTRUCTION = "You are a professional, empathetic, and knowledgeable Medical Doctor. Your goal is to provide clear, helpful, and safe advice regarding medications and general health. \n\nIMPORTANT: DO NOT include a typical medical disclaimer (like 'This is informational only') at the end of every message, as a mandatory daily disclaimer has already been shown to the user in the UI. Keep your answers concise and professional.\n\nYOUR BRAIN: You have direct access to the patient's current medication inventory provided in the conversation context. If a user asks for a recommendation (e.g., 'What can I take for a headache?'), scan their specific stored medicines first and tell them if they already have something matching (e.g., 'I see you have Paracetamol in your storage, which is effective for headaches'). Always prioritize medicines they already own before suggesting new ones. Use markdown formatting for clarity.";
 
 export interface ExtractedMedicine {
   name: string;
@@ -71,7 +95,7 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash-latest",
+      model: "gemini-3-flash-preview",
       contents: [
         { text: "Extract medication details from this image. Return JSON with fields: name, dosage, expirationDate (YYYY-MM-DD), usageInstructions, schedule, form, quantity." },
         { inlineData: { mimeType: "image/jpeg", data: base64Image.split(',')[1] } }
@@ -121,7 +145,7 @@ export async function checkDrugInteractions(medicines: { name: string; dosage: s
     Return JSON: { hasInteractions: boolean, interactions: [{ medications: string[], severity: "low"|"moderate"|"high", description: string, recommendation: string }], generalAdvice: string }`;
     
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash-latest",
+      model: "gemini-3-flash-preview",
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
@@ -143,9 +167,52 @@ export async function checkDrugInteractions(medicines: { name: string; dosage: s
   }
 }
 
+export async function chatWithAI(messages: ChatMessage[], provider: 'gemini' | 'deepseek' = 'gemini'): Promise<string> {
+  if (provider === 'deepseek') {
+    return chatWithDeepSeek(messages);
+  }
+  return chatWithGemini(messages);
+}
+
+export async function chatWithDeepSeek(messages: ChatMessage[]): Promise<string> {
+  try {
+    if (!DEEPSEEK_API_KEY) throw new Error("DeepSeek API Key is missing");
+
+    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [
+          { role: "system", content: SYSTEM_INSTRUCTION },
+          ...messages.map(m => ({ 
+            role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user', 
+            content: m.content 
+          }))
+        ],
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content || "I'm sorry, DeepSeek returned an empty response.";
+  } catch (error) {
+    console.error('DeepSeek Chat failed:', error);
+    return `DeepSeek Connection Issue: ${getDetailedError(error, 'deepseek')}`;
+  }
+}
+
 export async function chatWithGemini(messages: ChatMessage[]): Promise<string> {
   try {
-    if (!GEMINI_API_KEY) throw new Error("API Key is missing");
+    if (!GEMINI_API_KEY) throw new Error("Gemini API Key is missing");
 
     const history = messages.slice(0, -1).map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
@@ -153,19 +220,19 @@ export async function chatWithGemini(messages: ChatMessage[]): Promise<string> {
     }));
 
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash-latest",
+      model: "gemini-3-flash-preview",
       contents: [
         ...history,
         { role: 'user', parts: [{ text: messages[messages.length - 1].content }] }
       ],
       config: {
-        systemInstruction: "You are a professional, empathetic, and knowledgeable Medical Doctor. Your goal is to provide clear, helpful, and safe advice regarding medications and general health. \n\nIMPORTANT: DO NOT include a typical medical disclaimer (like 'This is informational only') at the end of every message, as a mandatory daily disclaimer has already been shown to the user in the UI. Keep your answers concise and professional.\n\nYOUR BRAIN: You have direct access to the patient's current medication inventory provided in the conversation context. If a user asks for a recommendation (e.g., 'What can I take for a headache?'), scan their specific stored medicines first and tell them if they already have something matching (e.g., 'I see you have Paracetamol in your storage, which is effective for headaches'). Always prioritize medicines they already own before suggesting new ones. Use markdown formatting for clarity."
+        systemInstruction: SYSTEM_INSTRUCTION
       }
     });
 
     return response.text || "I'm sorry, I couldn't generate a response.";
   } catch (error) {
-    console.error('Chat failed:', error);
-    return `AI Connection Issue: ${getDetailedError(error)}`;
+    console.error('Gemini Chat failed:', error);
+    return `Gemini Connection Issue: ${getDetailedError(error, 'gemini')}`;
   }
 }
