@@ -19,10 +19,16 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
 
   const startCamera = useCallback(async () => {
     try {
+      // Use stable constraints
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
+        video: { 
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
         audio: false,
       });
+      
       setStream(mediaStream);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
@@ -30,9 +36,11 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
 
       // Check for flash support
       const track = mediaStream.getVideoTracks()[0];
-      const capabilities = track.getCapabilities?.() as any;
-      if (capabilities && capabilities.torch) {
-        setHasFlash(true);
+      if (track) {
+        const capabilities = track.getCapabilities?.() as any;
+        if (capabilities && capabilities.torch) {
+          setHasFlash(true);
+        }
       }
     } catch (err) {
       setError("Could not access camera. Please ensure permissions are granted.");
@@ -42,19 +50,27 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose
 
   React.useEffect(() => {
     startCamera();
+    // Return a cleanup function that doesn't depend on 'stream' state to avoid re-runs
+    return () => {
+      // Use a local cleanup capture to avoid dependency issues
+    };
+  }, [startCamera]);
+
+  // Handle cleanup for the stream specifically when it changes or unmounts
+  React.useEffect(() => {
     return () => {
       if (stream) {
-        // Explicitly turn off torch if it was on
-        const track = stream.getVideoTracks()[0];
+        const tracks = stream.getTracks();
+        // Turn off torch if possible before stopping
+        const track = tracks.find(t => t.kind === 'video');
         if (track && hasFlash) {
-          track.applyConstraints({
-            advanced: [{ torch: false }]
-          } as any).catch(e => console.warn("Failed to turn off torch on unmount", e));
+          track.applyConstraints({ advanced: [{ torch: false }] } as any)
+            .catch(() => {});
         }
-        stream.getTracks().forEach(track => track.stop());
+        tracks.forEach(track => track.stop());
       }
     };
-  }, [startCamera, stream, hasFlash]);
+  }, [stream, hasFlash]);
 
   const toggleFlash = async () => {
     if (!stream || !hasFlash) return;
