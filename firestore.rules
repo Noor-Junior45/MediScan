@@ -60,20 +60,22 @@ service cloud.firestore {
 
     function isValidChatSession(data) {
       return data.keys().hasAll(['id', 'userId', 'title', 'createdAt', 'lastMessageAt']) &&
-             data.keys().hasOnly(['id', 'userId', 'title', 'createdAt', 'lastMessageAt']) &&
+             data.keys().hasOnly(['id', 'userId', 'title', 'createdAt', 'lastMessageAt', 'provider']) &&
              data.userId == request.auth.uid &&
              data.id is string &&
-             data.title is string && data.title.size() < 200 &&
+             data.title is string && data.title.size() < 500 &&
              data.createdAt is number &&
-             data.lastMessageAt is number;
+             data.lastMessageAt is number &&
+             (!('provider' in data) || data.provider in ['gemini', 'deepseek']);
     }
 
     function isValidChatMessage(data) {
       return data.keys().hasAll(['role', 'content', 'timestamp']) &&
-             data.keys().hasOnly(['id', 'role', 'content', 'timestamp']) &&
+             data.keys().hasOnly(['id', 'role', 'content', 'timestamp', 'provider']) &&
              data.role in ['user', 'assistant', 'system'] &&
-             data.content is string && data.content.size() < 5000 &&
-             data.timestamp is number;
+             data.content is string && data.content.size() < 10000 &&
+             data.timestamp is number &&
+             (!('provider' in data) || data.provider in ['gemini', 'deepseek']);
     }
 
     function isValidMail(data) {

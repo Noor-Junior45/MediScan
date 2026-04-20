@@ -3,7 +3,7 @@ import {
   X, Send, Bot, User, Sparkles, Loader2, Plus, 
   MessageSquare, ChevronLeft, Calendar, Clock, 
   History, Search, Trash2, ShieldCheck, Stethoscope,
-  AlertCircle, Pill, Info, Mail
+  AlertCircle, Pill, Info, Mail, ArrowLeft, Check, CheckCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -30,14 +30,12 @@ const SUGGESTED_PROMPTS = [
   { icon: <AlertCircle size={16} />, label: "Missed dose help", prompt: "What is the general protocol if I miss a dose of my medication?" }
 ];
 
+const MAIN_SESSION_ID = 'global_medical_consultation';
+
 export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, userPhoto }) => {
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [disclaimerTimeLeft, setDisclaimerTimeLeft] = useState(30);
   const [activeProvider, setActiveProvider] = useState<AIProvider>('gemini');
@@ -86,31 +84,27 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
     scrollToBottom();
   }, [messages]);
 
-  // Fetch Sessions
+  // Fetch Messages for the single global session
   useEffect(() => {
     if (!user) return;
-    const q = query(
-      collection(db, 'users', user.uid, 'chats'),
-      orderBy('lastMessageAt', 'desc')
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const sessionData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as ChatSession[];
-      setSessions(sessionData);
-    });
-    return unsubscribe;
-  }, [user]);
+    
+    const ensureSession = async () => {
+      const sessionRef = doc(db, 'users', user.uid, 'chats', MAIN_SESSION_ID);
+      const snap = await getDoc(sessionRef);
+      if (!snap.exists()) {
+        await setDoc(sessionRef, {
+          id: MAIN_SESSION_ID,
+          userId: user.uid,
+          title: 'Direct AI Consultation',
+          createdAt: Date.now(),
+          lastMessageAt: Date.now()
+        });
+      }
+    };
+    ensureSession();
 
-  // Fetch Messages for current session
-  useEffect(() => {
-    if (!user || !currentSessionId) {
-      setMessages([]);
-      return;
-    }
     const q = query(
-      collection(db, 'users', user.uid, 'chats', currentSessionId, 'messages'),
+      collection(db, 'users', user.uid, 'chats', MAIN_SESSION_ID, 'messages'),
       orderBy('timestamp', 'asc')
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -121,41 +115,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
       setMessages(msgData);
     });
     return unsubscribe;
-  }, [user, currentSessionId]);
-
-  const handleCreateNewSession = async () => {
-    if (!user) return;
-    const sessionId = crypto.randomUUID();
-    const newSession: Partial<ChatSession> = {
-      id: sessionId,
-      userId: user.uid,
-      title: 'New Consultation',
-      createdAt: Date.now(),
-      lastMessageAt: Date.now()
-    };
-    await setDoc(doc(db, 'users', user.uid, 'chats', sessionId), newSession);
-    setCurrentSessionId(sessionId);
-    setInput('');
-  };
+  }, [user]);
 
   const handleSendMessage = async (customPrompt?: string) => {
     const textToSend = customPrompt || input;
     if (!textToSend.trim() || isLoading || !user) return;
-
-    let sessionId = currentSessionId;
-    if (!sessionId) {
-      // Auto-create session if none active
-      sessionId = crypto.randomUUID();
-      const newSession: Partial<ChatSession> = {
-        id: sessionId,
-        userId: user.uid,
-        title: textToSend.slice(0, 30) + (textToSend.length > 30 ? '...' : ''),
-        createdAt: Date.now(),
-        lastMessageAt: Date.now()
-      };
-      await setDoc(doc(db, 'users', user.uid, 'chats', sessionId), newSession);
-      setCurrentSessionId(sessionId);
-    }
 
     const messageId = crypto.randomUUID();
     const userMsg: ChatMessage = {
@@ -166,32 +130,23 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
     };
 
     // Save user message
-    await setDoc(doc(db, 'users', user.uid, 'chats', sessionId, 'messages', messageId), userMsg);
+    await setDoc(doc(db, 'users', user.uid, 'chats', MAIN_SESSION_ID, 'messages', messageId), userMsg);
     
-    // Update session title if it was default
-    const sessionRef = doc(db, 'users', user.uid, 'chats', sessionId);
-    const sessionSnap = await getDoc(sessionRef);
-    if (sessionSnap.exists() && sessionSnap.data().title === 'New Consultation') {
-      await updateDoc(sessionRef, { 
-        title: textToSend.slice(0, 40) + (textToSend.length > 40 ? '...' : ''),
-        lastMessageAt: Date.now()
-      });
-    } else {
-      await updateDoc(sessionRef, { lastMessageAt: Date.now() });
-    }
+    // Update session timestamp
+    const sessionRef = doc(db, 'users', user.uid, 'chats', MAIN_SESSION_ID);
+    await updateDoc(sessionRef, { lastMessageAt: Date.now() });
 
     setInput('');
     setIsLoading(true);
 
     try {
-      // Build history for Gemini
+      // Build history
       const historyContext: ChatMessage[] = messages.concat(userMsg).map(m => ({
         role: m.role,
         content: m.content,
         timestamp: m.timestamp
       }));
 
-      // Add medication context if it's a new or related conversation
       const medContext = `[Patient Profile & Storage Context:
       - Inventory Check: Use this list to intelligently suggest medicines the user ALREADY has in their vault.
       - User's Stored Medicines: ${medicines.map(m => `${m.name} (${m.dosage}, ${m.form})`).join(", ")}
@@ -213,10 +168,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
         id: aiMsgId,
         role: 'assistant',
         content: aiResponse,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        provider: activeProvider
       };
 
-      await setDoc(doc(db, 'users', user.uid, 'chats', sessionId, 'messages', aiMsgId), aiMsg);
+      await setDoc(doc(db, 'users', user.uid, 'chats', MAIN_SESSION_ID, 'messages', aiMsgId), aiMsg);
       await updateDoc(sessionRef, { lastMessageAt: Date.now() });
     } catch (error) {
       console.error("Chat Error:", error);
@@ -253,27 +209,34 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
     }
   };
 
-  const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
+  const handleClearChat = async () => {
     if (!user) return;
-    if (window.confirm("Are you sure you want to delete this consultation history?")) {
-      await deleteDoc(doc(db, 'users', user.uid, 'chats', id));
-      if (currentSessionId === id) {
-        setCurrentSessionId(null);
-      }
+    if (window.confirm("This will permanently clear your consultation history. Continue?")) {
+      const msgsRef = collection(db, 'users', user.uid, 'chats', MAIN_SESSION_ID, 'messages');
+      const snap = await getDocs(msgsRef);
+      const batch = snap.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(batch);
+      setMessages([]);
     }
   };
 
-  const filteredSessions = sessions.filter(s => 
-    s.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const formatMessageDate = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return date.toLocaleDateString(undefined, { weekday: 'long' });
+    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  };
 
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-[#0f0f0f] flex flex-col md:flex-row overflow-hidden"
+      className="fixed inset-0 z-[100] bg-[#0b0b0b] flex flex-col overflow-hidden"
     >
       {/* Daily Disclaimer Modal */}
       <AnimatePresence>
@@ -337,330 +300,221 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
         )}
       </AnimatePresence>
 
-      {/* Mobile Top Header */}
-      <div className="md:hidden flex items-center justify-between p-4 bg-white/5 border-b border-white/5 shrink-0">
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-white/60">
-          <History size={20} />
-        </button>
-                {/* AI Provider Toggle */}
-                <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5">
-                  <button 
-                    onClick={() => setActiveProvider('gemini')}
-                    className={`flex-1 py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all relative flex items-center justify-center gap-1.5 ${
-                      activeProvider === 'gemini' ? 'bg-accent text-black shadow-lg' : 'text-white/40 hover:text-white'
-                    }`}
-                  >
-                    Gemini
-                    {isProviderKeyMissing('gemini') && <AlertCircle size={10} className={activeProvider === 'gemini' ? 'text-black' : 'text-red-500'} />}
-                  </button>
-                  <button 
-                    onClick={() => setActiveProvider('deepseek')}
-                    className={`flex-1 py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all relative flex items-center justify-center gap-1.5 ${
-                      activeProvider === 'deepseek' ? 'bg-accent text-black shadow-lg' : 'text-white/40 hover:text-white'
-                    }`}
-                  >
-                    DeepSeek
-                    {isProviderKeyMissing('deepseek') && <AlertCircle size={10} className={activeProvider === 'deepseek' ? 'text-black' : 'text-red-500'} />}
-                  </button>
-                </div>
+      {/* Main Bar / Header */}
+      <header className="flex items-center justify-between px-4 py-4 md:py-6 bg-[#121b22] border-b border-white/5 shrink-0 safe-top">
+        <div className="flex items-center gap-3">
+          <button onClick={onClose} className="p-2 text-white/60 hover:text-white transition-colors">
+            <ArrowLeft size={24} />
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="w-10 md:w-12 h-10 md:h-12 rounded-full bg-accent/20 flex items-center justify-center text-accent ring-2 ring-accent/20">
+                <Bot size={24} className="md:size-28" />
+              </div>
+              <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-[#121b22] rounded-full" />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-bold text-white text-sm md:text-base tracking-tight">DawaLens AI</span>
+              <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">Medical Assistant</span>
+            </div>
+          </div>
+        </div>
 
-                <div className="flex items-center gap-2">
-                  <Bot className="text-accent" size={20} />
-                  <span className="font-bold text-white text-sm">Consultation</span>
-                </div>
-        <button onClick={onClose} className="p-2 text-white/60">
-          <X size={20} />
-        </button>
-      </div>
+        <div className="flex items-center gap-4">
+          {/* AI Provider Toggle */}
+          <div className="hidden sm:flex bg-black/40 p-1 rounded-2xl border border-white/5 scale-90">
+            <button 
+              onClick={() => setActiveProvider('gemini')}
+              className={`py-1.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all gap-2 flex items-center ${
+                activeProvider === 'gemini' ? 'bg-accent text-black' : 'text-white/40 hover:text-white'
+              }`}
+            >
+              Gemini
+              {isProviderKeyMissing('gemini') && <AlertCircle size={12} className="text-red-500" />}
+            </button>
+            <button 
+              onClick={() => setActiveProvider('deepseek')}
+              className={`py-1.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all gap-2 flex items-center ${
+                activeProvider === 'deepseek' ? 'bg-accent text-black' : 'text-white/40 hover:text-white'
+              }`}
+            >
+              DeepSeek
+              {isProviderKeyMissing('deepseek') && <AlertCircle size={12} className="text-red-500" />}
+            </button>
+          </div>
 
-      {/* Sidebar - Chat History */}
-      <motion.aside
-        initial={false}
-        animate={{ 
-          width: isSidebarOpen ? (isMobile ? '100%' : '320px') : '0px',
-          x: isSidebarOpen ? 0 : -320
-        }}
-        className={`bg-[#141414] border-r border-white/5 flex flex-col z-50 absolute md:relative inset-y-0 left-0 overflow-hidden shadow-2xl md:shadow-none`}
-      >
-        <div className="p-6 shrink-0 flex flex-col gap-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <History size={18} className="text-accent" />
-              History
-            </h2>
-            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-2 text-white/40">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleClearChat}
+              className="p-2.5 bg-white/5 rounded-xl text-white/40 hover:text-red-400 hover:bg-white/10 transition-all"
+              title="Clear Entire Chat"
+            >
+              <Trash2 size={20} />
+            </button>
+            <button 
+              onClick={onClose}
+              className="p-2.5 bg-white/5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all"
+            >
               <X size={20} />
             </button>
           </div>
+        </div>
+      </header>
 
-          <button 
-            onClick={handleCreateNewSession}
-            className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl py-3 px-4 flex items-center justify-center gap-2 text-sm font-bold text-white transition-all active:scale-95"
-          >
-            <Plus size={18} />
-            New Consultation
-          </button>
-
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20" size={16} />
-            <input 
-              type="text" 
-              placeholder="Search history..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white/[0.03] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-xs text-white focus:outline-none focus:border-white/20 transition-all"
-            />
+      <main className="flex-1 flex flex-col relative bg-[#0b141a] overflow-hidden">
+        {/* Aesthetic Background Pattern */}
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none select-none overflow-hidden">
+          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-accent blur-[150px] rounded-full" />
+          <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-emerald-500 blur-[150px] rounded-full" />
+          <div className="grid grid-cols-12 gap-px h-full">
+            {Array.from({ length: 144 }).map((_, i) => (
+              <div key={i} className="border border-white/[0.05]" />
+            ))}
           </div>
         </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide">
-          {filteredSessions.length > 0 ? (
-            filteredSessions.map(session => (
-              <div
-                key={session.id}
-                onClick={() => {
-                  setCurrentSessionId(session.id);
-                  if (window.innerWidth < 768) setIsSidebarOpen(false);
-                }}
-                className={`w-full group text-left p-3 rounded-2xl transition-all flex items-center justify-between cursor-pointer ${
-                  currentSessionId === session.id 
-                    ? 'bg-accent/10 border border-accent/20 text-accent' 
-                    : 'hover:bg-white/5 text-white/60 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <MessageSquare size={16} className={currentSessionId === session.id ? 'text-accent' : 'text-white/20'} />
-                  <div className="flex flex-col overflow-hidden">
-                    <span className="text-sm font-medium truncate">{session.title}</span>
-                    <span className="text-[10px] opacity-40">{new Date(session.lastMessageAt).toLocaleDateString()}</span>
-                  </div>
-                </div>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteSession(e, session.id);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 text-white/20 hover:text-red-400 transition-all"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center px-6">
-              <Bot size={32} className="text-white/10 mb-3" />
-              <p className="text-xs text-white/30">No consultations found. Start a new chat to get medical advice.</p>
-            </div>
-          )}
-        </div>
-
-        <div className="p-4 border-t border-white/5 bg-white/[0.02]">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-accent">
-              {userPhoto ? <img src={userPhoto} alt="" className="w-full h-full object-cover rounded-full" /> : <User size={16} />}
-            </div>
-            <div className="flex flex-col">
-              <span className="text-xs font-bold text-white truncate max-w-[150px]">{user?.email || 'Patient'}</span>
-              <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Verified Profile</span>
-            </div>
-          </div>
-        </div>
-      </motion.aside>
-
-      {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col relative bg-[#0f0f0f]">
-        {/* Desktop Header */}
-        <header className="hidden md:flex items-center justify-between p-6 border-b border-white/5 shrink-0 bg-[#0f0f0f]">
-          <div className="flex items-center gap-4">
-            {!isSidebarOpen && (
-              <button 
-                onClick={() => setIsSidebarOpen(true)}
-                className="p-2 bg-white/5 rounded-xl text-white/60 hover:text-white"
-              >
-                <History size={20} />
-              </button>
-            )}
-            
-            {/* AI Provider Toggle Desktop */}
-            <div className="flex bg-white/5 p-1 rounded-2xl border border-white/5 mx-2">
-              <button 
-                onClick={() => setActiveProvider('gemini')}
-                className={`py-1.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
-                  activeProvider === 'gemini' ? 'bg-accent text-black shadow-lg shadow-accent/20' : 'text-white/40 hover:text-white'
-                }`}
-              >
-                Gemini
-                {isProviderKeyMissing('gemini') && <AlertCircle size={10} className={activeProvider === 'gemini' ? 'text-black' : 'text-red-500'} />}
-              </button>
-              <button 
-                onClick={() => setActiveProvider('deepseek')}
-                className={`py-1.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
-                  activeProvider === 'deepseek' ? 'bg-accent text-black shadow-lg shadow-accent/20' : 'text-white/40 hover:text-white'
-                }`}
-              >
-                DeepSeek
-                {isProviderKeyMissing('deepseek') && <AlertCircle size={10} className={activeProvider === 'deepseek' ? 'text-black' : 'text-red-500'} />}
-              </button>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent shadow-lg shadow-accent/5">
-                <Bot size={28} />
-              </div>
-              <div>
-                <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-                  DawaLens AI Consultant
-                  <Sparkles size={16} className="text-accent animate-pulse" />
-                </h1>
-                <p className="text-[11px] text-white/40 font-bold uppercase tracking-[0.2em] flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Live Medical Guidance
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {messages.length > 0 && (
-              <button
-                onClick={handleSendEmailReport}
-                className="flex items-center gap-2 px-4 py-2.5 bg-accent/10 border border-accent/20 rounded-xl text-accent hover:bg-accent/20 transition-all text-xs font-bold"
-                title="Send Chat Report to Email"
-              >
-                <Mail size={16} />
-                <span className="hidden sm:inline">Send Report</span>
-              </button>
-            )}
-            <button 
-              onClick={onClose}
-              className="p-3 bg-white/5 rounded-2xl text-white/40 hover:text-white hover:bg-white/10 transition-all active:scale-90"
-            >
-              <X size={24} />
-            </button>
-          </div>
-        </header>
 
         {/* Messages Container */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 scrollbar-hide">
-          {messages.length === 0 ? (
-            <div className="max-w-2xl mx-auto h-full flex flex-col items-center justify-center text-center">
-              <motion.div 
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="w-20 h-20 rounded-3xl bg-accent/20 flex items-center justify-center text-accent mb-8 shadow-2xl shadow-accent/10 ring-1 ring-accent/20"
-              >
-                <Bot size={40} />
-              </motion.div>
-              <h2 className="text-2xl md:text-3xl font-black text-white mb-3 tracking-tight">How can I assist you today?</h2>
-              <p className="text-sm text-white/40 mb-10 max-w-md leading-relaxed">
-                I'm your dedicated AI Medical Assistant. I can help with dosing, safety checks, or explaining your medications.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-                {SUGGESTED_PROMPTS.map((item, idx) => (
-                  <motion.button
-                    key={idx}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.1 }}
-                    onClick={() => handleSendMessage(item.prompt)}
-                    className="p-5 bg-white/[0.03] border border-white/5 rounded-[22px] text-left hover:bg-accent/5 hover:border-accent/20 transition-all group"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/40 group-hover:bg-accent/20 group-hover:text-accent transition-colors mb-4">
-                      {item.icon}
-                    </div>
-                    <span className="text-sm font-bold text-white group-hover:text-accent transition-colors">{item.label}</span>
-                    <p className="text-xs text-white/30 mt-1 line-clamp-2 leading-relaxed">"{item.prompt}"</p>
-                  </motion.button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="max-w-3xl mx-auto space-y-8">
-              {messages.map((msg, idx) => (
-                <motion.div
-                  key={msg.id || idx}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`flex gap-4 md:gap-6 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
-                >
-                  <div className={`w-10 h-10 shrink-0 rounded-2xl flex items-center justify-center overflow-hidden shadow-lg ${
-                    msg.role === 'user' ? 'bg-white/5 ring-1 ring-white/10' : 'bg-accent text-black ring-4 ring-accent/10'
-                  }`}>
-                    {msg.role === 'user' ? (
-                      userPhoto ? <img src={userPhoto} alt="" className="w-full h-full object-cover" /> : <User size={20} />
-                    ) : (
-                      <Bot size={22} strokeWidth={2.5} />
-                    )}
-                  </div>
-                  <div className={`flex flex-col max-w-[85%] md:max-w-[75%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                    <div className={`p-4 md:p-6 rounded-[28px] text-[15px] leading-relaxed shadow-xl prose prose-invert max-w-none ${
-                      msg.role === 'user' 
-                        ? 'bg-[#1a1a1a] text-white border border-white/10 rounded-tr-none' 
-                        : 'bg-white/[0.02] text-white/90 border border-white/5 rounded-tl-none backdrop-blur-xl'
-                    }`}>
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2 px-1">
-                      <span className="text-[10px] text-white/20 font-bold uppercase tracking-widest">
-                        {msg.role === 'user' ? 'Patient' : `Dr. DawaLens (${activeProvider.toUpperCase()})`}
-                      </span>
-                      <span className="w-1 h-1 rounded-full bg-white/10" />
-                      <span className="text-[10px] text-white/20 font-medium">
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-              {isLoading && (
-                <div className="flex gap-4 md:gap-6">
-                  <div className="w-10 h-10 shrink-0 rounded-2xl bg-accent text-black flex items-center justify-center shadow-lg ring-4 ring-accent/10">
-                    <Bot size={22} strokeWidth={2.5} />
-                  </div>
-                  <div className="bg-white/[0.02] p-4 md:p-6 rounded-[28px] rounded-tl-none border border-white/5 flex items-center justify-center">
-                    <div className="flex gap-1.5">
-                      <motion.div animate={{ scale: [1, 1.5, 1] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-accent/40 rounded-full" />
-                      <motion.div animate={{ scale: [1, 1.5, 1] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-accent/60 rounded-full" />
-                      <motion.div animate={{ scale: [1, 1.5, 1] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-accent rounded-full" />
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scrollbar-hide relative z-10 w-full max-w-4xl mx-auto">
+          {messages.length === 0 && (
+            <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
+              <Bot size={60} strokeWidth={1} />
+              <p className="mt-4 text-sm font-medium">Starting conversation...</p>
             </div>
           )}
+
+          <div className="space-y-6">
+            {messages.map((msg, idx) => {
+              const showDate = idx === 0 || formatMessageDate(msg.timestamp) !== formatMessageDate(messages[idx - 1].timestamp);
+              
+              return (
+                <React.Fragment key={msg.id || idx}>
+                  {showDate && (
+                    <div className="flex justify-center my-10">
+                      <span className="bg-[#182229] text-white/50 text-[10px] font-black px-4 py-2 rounded-xl shadow-sm uppercase tracking-[0.2em] transition-all">
+                        {formatMessageDate(msg.timestamp)}
+                      </span>
+                    </div>
+                  )}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    className={`flex items-end gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+                  >
+                    {/* Avatar Integration */}
+                    <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center overflow-hidden mb-2 ${
+                      msg.role === 'user' ? 'bg-white/10' : 'bg-accent/20 text-accent'
+                    }`}>
+                      {msg.role === 'user' ? (
+                        userPhoto ? <img src={userPhoto} alt="" className="w-full h-full object-cover" /> : <User size={16} />
+                      ) : (
+                        <Bot size={18} />
+                      )}
+                    </div>
+
+                    <div className={`relative max-w-[85%] md:max-w-[75%] px-4 pt-3 pb-2 shadow-lg flex flex-col ${
+                      msg.role === 'user' 
+                        ? 'bg-[#005c4b] text-white rounded-[18px] rounded-br-[4px]' 
+                        : 'bg-[#202c33] text-white rounded-[18px] rounded-bl-[4px]'
+                    }`}>
+                      {/* Provider Badge for AI */}
+                      {msg.role === 'assistant' && (
+                        <div className="flex items-center gap-2 mb-2 px-1 opacity-70">
+                          <Bot size={12} className="text-accent" />
+                          <span className="text-[10px] font-black uppercase tracking-widest text-accent">
+                            {msg.provider?.toUpperCase() || activeProvider.toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      
+                      <div className="prose prose-sm prose-invert max-w-none text-[15px] leading-relaxed break-words">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                      
+                      <div className="flex items-center self-end gap-1.5 mt-2 ml-10">
+                        <span className="text-[10px] text-white/40 font-bold tracking-tighter">
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {msg.role === 'user' && (
+                          <CheckCheck size={14} className="text-emerald-400 opacity-80" />
+                        )}
+                      </div>
+
+                      {/* Aesthetic Tails */}
+                      {msg.role === 'user' && (
+                        <svg className="absolute -bottom-[2px] -right-[10px]" width="15" height="15" viewBox="0 0 15 15">
+                          <path d="M0 15 C 6 15 10 15 15 15 L 15 0 C 12 4 8 10 0 15 Z" fill="#005c4b" />
+                        </svg>
+                      )}
+                      
+                      {msg.role === 'assistant' && (
+                        <svg className="absolute -bottom-[2px] -left-[10px]" width="15" height="15" viewBox="0 0 15 15">
+                          <path d="M15 15 C 9 15 5 15 0 15 L 0 0 C 3 4 7 10 15 15 Z" fill="#202c33" />
+                        </svg>
+                      )}
+                    </div>
+                  </motion.div>
+                </React.Fragment>
+              );
+            })}
+            {isLoading && (
+              <div className="flex justify-start items-end gap-3">
+                <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-accent mb-2">
+                  <Bot size={18} />
+                </div>
+                <div className="bg-[#202c33] px-5 py-4 rounded-[18px] rounded-bl-[4px] shadow-sm">
+                  <div className="flex gap-2">
+                    <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.2 }} className="w-2.5 h-2.5 bg-accent/60 rounded-full" />
+                    <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }} className="w-2.5 h-2.5 bg-accent/60 rounded-full" />
+                    <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }} className="w-2.5 h-2.5 bg-accent/60 rounded-full" />
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
         </div>
 
-        {/* Input Bar */}
-        <div className="p-4 md:p-8 bg-gradient-to-t from-[#0f0f0f] via-[#0f0f0f] to-transparent shrink-0">
-          <div className="max-w-3xl mx-auto">
-            <div className="relative group">
-              <input
-                ref={inputRef}
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Message Dr. DawaLens AI..."
-                className="w-full bg-[#1a1a1a] border border-white/10 rounded-[28px] py-4 md:py-6 pl-6 pr-20 text-[15px] text-white focus:outline-none focus:border-accent/40 group-focus-within:ring-4 ring-accent/5 transition-all shadow-2xl"
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+        {/* Input Bar & Persistent Recommendations */}
+        <div className="p-4 md:p-6 bg-[#121b22] border-t border-white/5 shrink-0 safe-bottom z-20">
+          <div className="max-w-4xl mx-auto space-y-4">
+            {/* Quick Actions Scroll bar */}
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide no-scrollbar">
+              {SUGGESTED_PROMPTS.map((item, idx) => (
                 <button
-                  onClick={() => handleSendMessage()}
-                  disabled={!input.trim() || isLoading}
-                  className={`p-3 md:p-4 rounded-2xl transition-all ${
-                    input.trim() && !isLoading 
-                      ? 'bg-accent text-black scale-100 hover:scale-105 active:scale-95 shadow-lg shadow-accent/20' 
-                      : 'bg-white/5 text-white/20'
-                  }`}
+                  key={idx}
+                  onClick={() => handleSendMessage(item.prompt)}
+                  className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-white/[0.03] border border-white/5 rounded-full text-xs font-bold text-white/60 hover:bg-white/[0.08] hover:text-white transition-all whitespace-nowrap active:scale-95"
                 >
-                  {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                  <span className="text-accent">{item.icon}</span>
+                  {item.label}
                 </button>
-              </div>
+              ))}
             </div>
-            <p className="mt-4 text-center text-[10px] text-white/20 font-medium">
-              Medical guidance provided for informational purposes only. Please consult your personal doctor for medical decisions.
-            </p>
+
+            <div className="flex items-center gap-3">
+              <div className="flex-1 relative">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                  placeholder="Ask about medications..."
+                  className="w-full bg-[#2a3942] border border-white/5 rounded-[22px] py-4 px-6 text-[15px] text-white focus:outline-none focus:ring-1 focus:ring-accent/20 placeholder:text-white/20 shadow-inner"
+                />
+              </div>
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={!input.trim() || isLoading}
+                className={`p-4 rounded-full transition-all shadow-xl ${
+                  input.trim() && !isLoading 
+                    ? 'bg-[#00a884] text-white scale-100 active:scale-90 hover:shadow-emerald-500/20' 
+                    : 'bg-[#2a3942] text-white/10'
+                }`}
+              >
+                {isLoading ? <Loader2 size={24} className="animate-spin" /> : <Send size={24} />}
+              </button>
+            </div>
           </div>
         </div>
       </main>

@@ -32,6 +32,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+  provider?: AIProvider;
 }
 
 export interface ChatSession {
