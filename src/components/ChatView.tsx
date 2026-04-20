@@ -387,9 +387,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
               const showDate = idx === 0 || formatMessageDate(msg.timestamp) !== formatMessageDate(messages[idx - 1].timestamp);
               
               return (
-                <React.Fragment key={msg.id || idx}>
+                <React.Fragment key={`chat-msg-${msg.id || idx}`}>
                   {showDate && (
-                    <div className="flex justify-center my-10">
+                    <div className="flex justify-center my-10" key={`chat-date-${msg.id || idx}`}>
                       <span className="bg-[#182229] text-white/50 text-[10px] font-black px-4 py-2 rounded-xl shadow-sm uppercase tracking-[0.2em] transition-all">
                         {formatMessageDate(msg.timestamp)}
                       </span>

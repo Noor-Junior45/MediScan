@@ -13,7 +13,7 @@ import {
   auth, db, storage, googleProvider, signInWithPopup, signOut, onAuthStateChanged, 
   collection, doc, setDoc, deleteDoc, updateDoc, writeBatch, onSnapshot, query, where, orderBy, getDoc, getDocs, User,
   handleFirestoreError, OperationType, deleteField, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  ref, uploadBytes, getDownloadURL, deleteObject, serverTimestamp
+  ref, uploadBytes, getDownloadURL, deleteObject, serverTimestamp, uploadBytesResumable
 } from './firebase';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AdBanner } from './components/AdBanner';
@@ -111,8 +111,10 @@ export default function App() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const meds = snapshot.docs.map(doc => ({ ...doc.data() } as Medicine));
-      setMedicines(meds);
+      const medsData = snapshot.docs.map(doc => ({ ...doc.data() } as Medicine));
+      // Deduplicate by ID to prevent React "duplicate key" warnings during sync lag or accidental duplicates
+      const uniqueMeds = Array.from(new Map(medsData.map(m => [m.id, m])).values());
+      setMedicines(uniqueMeds);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'medicines');
     });
@@ -385,13 +387,54 @@ export default function App() {
       const { capturedImage, ...firestoreData } = data;
       let imageUrl = data.imageUrl;
 
-      // 1. Parallelize Image Upload (if needed)
+      // 1. Parallelize Image Upload (if needed) with Robust Task Management
       if (capturedImage && capturedImage.startsWith('data:image')) {
         const imageId = crypto.randomUUID();
         const storageRef = ref(storage, `medicines/${user.uid}/${imageId}.jpg`);
-        const blob = base64ToBlob(capturedImage, 'image/jpeg');
-        await uploadBytes(storageRef, blob);
-        imageUrl = await getDownloadURL(storageRef);
+        
+        // Re-compress for efficient cloud storage
+        const uploadBlob = await new Promise<Blob>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 800; 
+            let width = img.width;
+            let height = img.height;
+            if (width > MAX_WIDTH) {
+              height = Math.round((height * MAX_WIDTH) / width);
+              width = MAX_WIDTH;
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(img, 0, 0, width, height);
+            canvas.toBlob((blob) => resolve(blob!), 'image/jpeg', 0.5); // Lower quality for reliability
+          };
+          img.src = capturedImage;
+        });
+
+        // Use Resumable upload for better network resilience
+        const uploadTask = uploadBytesResumable(storageRef, uploadBlob);
+        
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            uploadTask.cancel();
+            reject(new Error('Cloud Upload Timeout (60s)'));
+          }, 60000);
+
+          uploadTask.on('state_changed', 
+            null, 
+            (err) => {
+              clearTimeout(timeout);
+              reject(err);
+            }, 
+            async () => {
+              clearTimeout(timeout);
+              imageUrl = await getDownloadURL(storageRef);
+              resolve(true);
+            }
+          );
+        });
       }
       
       const normalizedName = (firestoreData.name || '').toLowerCase().trim();
