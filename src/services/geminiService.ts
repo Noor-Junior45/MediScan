@@ -58,7 +58,7 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
 
     // 2. Client-side AI extraction if not in cache
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash",
       contents: [
         { text: "Extract medication details from this image. Return JSON with fields: name, dosage, expirationDate (YYYY-MM-DD), usageInstructions, schedule, form, quantity." },
         { inlineData: { mimeType: "image/jpeg", data: base64Image.split(',')[1] } }
@@ -68,7 +68,10 @@ export async function extractMedicineData(base64Image: string): Promise<Extracti
       }
     });
 
-    const result = JSON.parse(response.text);
+    const text = response.text;
+    if (!text) throw new Error("AI returned empty response");
+    
+    const result = JSON.parse(text);
     const extractionResult = { success: true, medicine: result };
 
     // 3. Save to backend cache
@@ -105,12 +108,14 @@ export async function checkDrugInteractions(medicines: { name: string; dosage: s
     Return JSON: { hasInteractions: boolean, interactions: [{ medications: string[], severity: "low"|"moderate"|"high", description: string, recommendation: string }], generalAdvice: string }`;
     
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash",
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
 
-    const result = JSON.parse(response.text);
+    const text = response.text;
+    if (!text) throw new Error("AI returned empty response");
+    const result = JSON.parse(text);
 
     // 3. Save to backend cache
     fetch('/api/ai/interactions-save-cache', {
@@ -134,7 +139,7 @@ export async function chatWithGemini(messages: ChatMessage[]): Promise<string> {
     }));
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash",
       contents: [
         ...history,
         { role: 'user', parts: [{ text: messages[messages.length - 1].content }] }
@@ -144,7 +149,7 @@ export async function chatWithGemini(messages: ChatMessage[]): Promise<string> {
       }
     });
 
-    return response.text;
+    return response.text || "I'm sorry, I couldn't generate a response.";
   } catch (error) {
     console.error('Chat failed:', error);
     return "I'm having trouble connecting to my medical database. Please try again later.";
