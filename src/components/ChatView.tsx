@@ -18,6 +18,7 @@ import { chatWithAI, isProviderKeyMissing, getChatCountToday } from '../services
 import ReactMarkdown from 'react-markdown';
 import { DoctorLogo } from './DoctorLogo';
 import { sendEmailAlert, getConsultationReportEmailHTML } from '../services/emailService';
+import { trackEvent } from '../utils/analytics';
 
 interface ChatViewProps {
   onClose: () => void;
@@ -200,6 +201,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onClose, medicines, user, us
       const aiResponse = await chatWithAI(promptHistory, activeProvider, user.uid, medicines);
       setIsOnline(true);
       setChatCount(prev => Math.min(10, prev + 1));
+      trackEvent('chat_with_ai', { length: textToSend.length });
 
       const aiMsgId = crypto.randomUUID();
       const aiMsg: ChatMessage = {
@@ -298,6 +300,7 @@ Otherwise, please try again once the billing plan or quota is refreshed. Thank y
         text,
         html
       });
+      trackEvent('send_email_report', { message_count: messages.length });
       alert(`Consultation report email sent successfully to ${user.email}!`);
     } catch (err: any) {
       console.error("Mail Error:", err);

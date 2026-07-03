@@ -25,6 +25,7 @@ import { DoctorLogo } from './components/DoctorLogo';
 import { triggerLightHaptic, triggerSuccessHaptic } from './utils/haptics';
 import { localImageStorage } from './services/localImageStorage';
 import { sendEmailAlert, getExpiryEmailHTML, getLowStockEmailHTML } from './services/emailService';
+import { trackEvent } from './utils/analytics';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -372,6 +373,7 @@ export default function App() {
   const handleLogin = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
+      trackEvent('login', { method: 'google' });
     } catch (error: any) {
       if (error.code === 'auth/popup-closed-by-user') {
         // Silently handle popup closure
@@ -386,6 +388,7 @@ export default function App() {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      trackEvent('login', { method: 'email' });
     } catch (error: any) {
       console.warn('Email login warning:', error);
       if (error.code === 'auth/invalid-credential') {
@@ -406,6 +409,7 @@ export default function App() {
     }
     try {
       await createUserWithEmailAndPassword(auth, email, password);
+      trackEvent('sign_up', { method: 'email' });
     } catch (error: any) {
       console.warn('Email sign up warning:', error);
       if (error.code === 'auth/email-already-in-use') {
@@ -428,6 +432,7 @@ export default function App() {
     try {
       await sendPasswordResetEmail(auth, email.trim());
       setPasswordResetEmailSent(email.trim());
+      trackEvent('password_reset');
     } catch (error: any) {
       console.warn('Password reset warning:', error);
       if (error.code === 'auth/user-not-found') {
@@ -443,6 +448,7 @@ export default function App() {
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      trackEvent('logout');
       // Reset UI states on logout
       setIsSettingsOpen(false);
       setIsEmailLoginOpen(false);
@@ -489,6 +495,7 @@ export default function App() {
       const result = await checkDrugInteractions(activeMedicines.map(m => ({ name: m.name, dosage: m.dosage })));
       setInteractionResult(result);
       setIsInteractionModalOpen(true);
+      trackEvent('check_interactions', { count: activeMedicines.length });
     } catch (error) {
       console.error("Interaction check failed:", error);
       setAlertMessage("Failed to check interactions. Please try again.");
@@ -627,6 +634,12 @@ export default function App() {
       // Commit all changes in ONE atomic operation
       await batch.commit();
 
+      trackEvent('save_medication', { 
+        name: data.name || 'Unknown', 
+        form: data.form || 'other',
+        is_edit: !!editingMedicine
+      });
+
       if (localImageToSave && targetId) {
         await localImageStorage.saveImage(targetId, localImageToSave);
       }
@@ -662,6 +675,7 @@ export default function App() {
         isDeleted: true,
         deletedAt: Date.now()
       });
+      trackEvent('delete_medication', { name: medToDelete?.name || 'Unknown' });
       setIsFormOpen(false);
       setEditingMedicine(null);
       setExtractionWarning(null);
@@ -697,6 +711,7 @@ export default function App() {
       const medRef = doc(db, 'medicines', medicine.id);
       await setDoc(medRef, { taken: !medicine.taken }, { merge: true });
       triggerSuccessHaptic();
+      trackEvent('toggle_taken', { name: medicine.name, is_taken: !medicine.taken });
 
       const historyId = crypto.randomUUID();
       await setDoc(doc(db, `medicines/${medicine.id}/history`, historyId), {
@@ -797,6 +812,7 @@ export default function App() {
     setIsProcessing(false);
     
     if (result.success && result.medicine) {
+      trackEvent('capture_image', { success: true, name: result.medicine.name || 'Unknown' });
       setEditingMedicine(null);
       // Pre-fill form with extracted data
       const tempMed: Partial<Medicine> = {
@@ -816,6 +832,7 @@ export default function App() {
       setIsCameraOpen(false);
       setIsFormOpen(true);
     } else {
+      trackEvent('capture_image', { success: false, error: result.errorMessage || "Failed extraction" });
       setExtractionError(result.errorMessage || "Could not read the label. Please ensure good lighting and a clear, focused image.");
     }
   };
@@ -931,6 +948,7 @@ export default function App() {
               await batch.commit();
             }
             setAlertMessage(`Successfully imported ${count} new medicines and merged ${mergedCount} duplicates.`);
+            trackEvent('import_csv', { count, merged_count: mergedCount });
           } else {
             setAlertMessage("No valid medicines found to import.");
           }
@@ -965,6 +983,7 @@ export default function App() {
     }));
 
     const csvContent = Papa.unparse(data);
+    trackEvent('export_sheets', { count: activeMedicines.length });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
