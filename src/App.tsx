@@ -1444,6 +1444,19 @@ export default function App() {
           onToggleLike={handleToggleLike}
         />
 
+        {/* Dynamic & Compliant Footer within main app view */}
+        <footer className="mt-12 px-4 pb-4 border-t border-[#e3e2e0]/40 pt-4 flex flex-col sm:flex-row justify-between items-center gap-2 text-[11px] text-slate-400 font-bold">
+          <div>&copy; 2026 DawaLens AI. All rights reserved.</div>
+          <div className="flex gap-4">
+            <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-[#0f9d58] hover:underline">
+              Privacy Policy
+            </a>
+            <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-[#0f9d58] hover:underline">
+              Terms of Service
+            </a>
+          </div>
+        </footer>
+
       </main>
 
       {/* Floating Action Bar */}

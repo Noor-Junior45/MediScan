@@ -84,11 +84,11 @@ export function getExpiryEmailHTML(medicineName: string, stock: number | string,
   <style>
     body { margin: 0; padding: 0; min-width: 100%!important; width: 100%!important; background-color: #f2f5f8; }
     @media only screen and (max-width: 600px) {
-      .email-container { padding: 20px 12px !important; }
-      .email-card { padding: 24px 16px !important; border-radius: 12px !important; }
-      .email-header { font-size: 18px !important; }
-      table { width: 100% !important; margin: 16px 0 !important; }
-      th, td { padding: 8px 10px !important; font-size: 13px !important; }
+      .email-container { padding: 10px 4px !important; }
+      .email-card { padding: 16px 10px !important; border-radius: 12px !important; width: 100% !important; box-sizing: border-box !important; }
+      .email-header { font-size: 16px !important; }
+      table { width: 100% !important; margin: 12px 0 !important; table-layout: fixed !important; }
+      th, td { padding: 8px 6px !important; font-size: 12px !important; word-break: break-word !important; }
     }
   </style>
 </head>
@@ -109,7 +109,7 @@ export function getExpiryEmailHTML(medicineName: string, stock: number | string,
       
       <!-- Table Wrapper for Responsiveness -->
       <div style="width: 100%; overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 6px; margin: 24px 0;">
-        <table style="width: 100%; border-collapse: collapse; min-width: 320px; overflow: hidden; background-color: #f9fafb; margin: 0;">
+        <table style="width: 100%; border-collapse: collapse; min-width: 100%; overflow: hidden; background-color: #f9fafb; margin: 0;">
           <thead>
             <tr style="background-color: #f3f4f6;">
               <th style="padding: 12px 16px; text-align: left; font-size: 14px; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; width: 50%;">Product Name</th>
@@ -154,11 +154,11 @@ export function getLowStockEmailHTML(medicineName: string, stock: number | strin
   <style>
     body { margin: 0; padding: 0; min-width: 100%!important; width: 100%!important; background-color: #f2f5f8; }
     @media only screen and (max-width: 600px) {
-      .email-container { padding: 20px 12px !important; }
-      .email-card { padding: 24px 16px !important; border-radius: 12px !important; }
-      .email-header { font-size: 18px !important; }
-      table { width: 100% !important; margin: 16px 0 !important; }
-      th, td { padding: 8px 10px !important; font-size: 13px !important; }
+      .email-container { padding: 10px 4px !important; }
+      .email-card { padding: 16px 10px !important; border-radius: 12px !important; width: 100% !important; box-sizing: border-box !important; }
+      .email-header { font-size: 16px !important; }
+      table { width: 100% !important; margin: 12px 0 !important; table-layout: fixed !important; }
+      th, td { padding: 8px 6px !important; font-size: 12px !important; word-break: break-word !important; }
     }
   </style>
 </head>
@@ -179,7 +179,7 @@ export function getLowStockEmailHTML(medicineName: string, stock: number | strin
       
       <!-- Table Wrapper for Responsiveness -->
       <div style="width: 100%; overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 6px; margin: 24px 0;">
-        <table style="width: 100%; border-collapse: collapse; min-width: 320px; overflow: hidden; background-color: #f9fafb; margin: 0;">
+        <table style="width: 100%; border-collapse: collapse; min-width: 100%; overflow: hidden; background-color: #f9fafb; margin: 0;">
           <thead>
             <tr style="background-color: #f3f4f6;">
               <th style="padding: 12px 16px; text-align: left; font-size: 14px; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; width: 50%;">Product Name</th>
@@ -237,11 +237,11 @@ export function getConsultationReportEmailHTML(medicinesList: { name: string; do
   <style>
     body { margin: 0; padding: 0; min-width: 100%!important; width: 100%!important; background-color: #f2f5f8; }
     @media only screen and (max-width: 600px) {
-      .email-container { padding: 20px 12px !important; }
-      .email-card { padding: 24px 16px !important; border-radius: 12px !important; }
-      .email-header { font-size: 18px !important; }
-      table { width: 100% !important; margin-bottom: 16px !important; }
-      th, td { padding: 8px 10px !important; font-size: 13px !important; }
+      .email-container { padding: 10px 4px !important; }
+      .email-card { padding: 16px 10px !important; border-radius: 12px !important; width: 100% !important; box-sizing: border-box !important; }
+      .email-header { font-size: 16px !important; }
+      table { width: 100% !important; margin-bottom: 12px !important; table-layout: fixed !important; }
+      th, td { padding: 8px 6px !important; font-size: 12px !important; word-break: break-word !important; }
     }
   </style>
 </head>
@@ -266,7 +266,7 @@ export function getConsultationReportEmailHTML(medicinesList: { name: string; do
       
       <!-- Medications Table -->
       <div style="width: 100%; overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 28px;">
-        <table style="width: 100%; border-collapse: collapse; min-width: 320px; overflow: hidden; background-color: #f9fafb; margin: 0;">
+        <table style="width: 100%; border-collapse: collapse; min-width: 100%; overflow: hidden; background-color: #f9fafb; margin: 0;">
           <thead>
             <tr style="background-color: #f3f4f6;">
               <th style="padding: 10px 16px; text-align: left; font-size: 13px; font-weight: 600; color: #374151; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; width: 60%;">Medicine Name</th>

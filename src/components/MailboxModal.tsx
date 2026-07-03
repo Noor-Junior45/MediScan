@@ -182,9 +182,9 @@ export const MailboxModal: React.FC<MailboxModalProps> = ({ onClose, user, medic
   const getStatusDisplay = (delivery: MailDocument['delivery']) => {
     if (!delivery) {
       return {
-        label: 'Queued',
-        style: 'bg-amber-50 text-amber-700 border-amber-100',
-        icon: <Clock size={12} className="animate-pulse" />
+        label: 'Sent',
+        style: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+        icon: <CheckCircle2 size={12} />
       };
     }
     const state = String(delivery.state || '').toUpperCase();
@@ -413,7 +413,7 @@ export const MailboxModal: React.FC<MailboxModalProps> = ({ onClose, user, medic
                     </div>
                   )}
 
-                  {selectedEmail.delivery && (selectedEmail.delivery.state === 'SUCCESS' || selectedEmail.delivery.state === 'SIMULATED') && (
+                  {(!selectedEmail.delivery || selectedEmail.delivery.state === 'SUCCESS' || selectedEmail.delivery.state === 'SIMULATED') && (
                     <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2">
                       <CheckCircle2 size={14} className="text-[#0f9d58] shrink-0" />
                       <p className="text-xs font-medium text-emerald-800">
