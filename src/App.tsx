@@ -256,10 +256,21 @@ export default function App() {
           return dateStr;
         };
 
-        // Loop expiring meds and trigger if not already sent today
+        const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+
+        // Loop expiring meds and trigger if not already sent in the last 7 days
         for (const m of expiringMeds) {
-          const storageKey = `dawalens_ai_email_exp_${m.id}_${todayStr}`;
-          if (!localStorage.getItem(storageKey)) {
+          const storageKey = `dawalens_ai_email_exp_sent_${m.id}`;
+          const lastSentStr = localStorage.getItem(storageKey);
+          let shouldSend = true;
+          if (lastSentStr) {
+            const lastSentTime = Number(lastSentStr);
+            if (!isNaN(lastSentTime) && (Date.now() - lastSentTime < sevenDaysInMs)) {
+              shouldSend = false;
+            }
+          }
+
+          if (shouldSend) {
             try {
               const formattedExpiry = formatExpiryMonthYear(m.expirationDate);
               const subject = `Expiry Alert: ${m.name} is Expiring Soon`;
@@ -272,17 +283,26 @@ export default function App() {
                 text,
                 html
               });
-              localStorage.setItem(storageKey, 'true');
+              localStorage.setItem(storageKey, String(Date.now()));
             } catch (err) {
               console.error("Auto expiry email alert failed:", err);
             }
           }
         }
 
-        // Loop low quantity meds and trigger if not already sent today
+        // Loop low quantity meds and trigger if not already sent in the last 7 days
         for (const m of lowQuantityMeds) {
-          const storageKey = `dawalens_ai_email_qty_${m.id}_${todayStr}`;
-          if (!localStorage.getItem(storageKey)) {
+          const storageKey = `dawalens_ai_email_qty_sent_${m.id}`;
+          const lastSentStr = localStorage.getItem(storageKey);
+          let shouldSend = true;
+          if (lastSentStr) {
+            const lastSentTime = Number(lastSentStr);
+            if (!isNaN(lastSentTime) && (Date.now() - lastSentTime < sevenDaysInMs)) {
+              shouldSend = false;
+            }
+          }
+
+          if (shouldSend) {
             try {
               const subject = `Refill Required: ${m.name} is Low on Stock`;
               const text = `DawaLens AI alert: Your medicine ${m.name} quantity is down to ${m.quantity}. Please replenish your stocks soon.`;
@@ -294,7 +314,7 @@ export default function App() {
                 text,
                 html
               });
-              localStorage.setItem(storageKey, 'true');
+              localStorage.setItem(storageKey, String(Date.now()));
             } catch (err) {
               console.error("Auto quantity email alert failed:", err);
             }
