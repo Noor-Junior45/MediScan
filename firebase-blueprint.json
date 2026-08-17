@@ -22,6 +22,8 @@
         "form": { "type": "string", "enum": ["tablet", "capsule", "syrup", "ampule", "powder", "other"] },
         "schedule": { "type": "string" },
         "liked": { "type": "boolean" },
+        "enableLowStockAlert": { "type": "boolean" },
+        "lowStockThreshold": { "type": "number" },
         "isEncrypted": { "type": "boolean" },
         "ivMap": { "type": "object" }
       },

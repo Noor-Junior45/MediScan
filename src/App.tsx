@@ -225,10 +225,13 @@ export default function App() {
           return diffDays === effectiveThreshold || diffDays === 10 || diffDays === 0;
         });
 
-        // B. Filter medicines for low quantity alerts
+        // B. Filter medicines for low quantity alerts (respecting individual low-stock alert settings)
         const lowQuantityMeds = medicines.filter(m => {
-          if (m.isDeleted) return false;
-          return m.quantity !== undefined && m.quantity <= lowQuantityThreshold;
+          if (m.isDeleted || m.taken) return false;
+          // Skip if low-stock alert is explicitly disabled for this individual medicine (e.g. syrups)
+          if (m.enableLowStockAlert === false) return false;
+          const individualThreshold = m.lowStockThreshold !== undefined ? m.lowStockThreshold : lowQuantityThreshold;
+          return m.quantity !== undefined && m.quantity <= individualThreshold;
         });
 
         // Format helper for expiry month & year
@@ -306,7 +309,8 @@ export default function App() {
             try {
               const subject = `Refill Required: ${m.name} is Low on Stock`;
               const text = `DawaLens AI alert: Your medicine ${m.name} quantity is down to ${m.quantity}. Please replenish your stocks soon.`;
-              const html = getLowStockEmailHTML(m.name, m.quantity, lowQuantityThreshold);
+              const thresholdUsed = m.lowStockThreshold !== undefined ? m.lowStockThreshold : lowQuantityThreshold;
+              const html = getLowStockEmailHTML(m.name, m.quantity, thresholdUsed);
 
               await sendEmailAlert({
                 to: user.email,
@@ -1560,6 +1564,7 @@ export default function App() {
             onDelete={handleDelete}
             extractionWarning={extractionWarning}
             isSaving={isSaving}
+            globalLowQuantityThreshold={lowQuantityThreshold}
             onClose={() => {
               setIsFormOpen(false);
               setEditingMedicine(null);

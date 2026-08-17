@@ -26,6 +26,8 @@ export interface Medicine {
   deletedAt?: number;
   form?: MedicineForm;
   liked?: boolean;
+  enableLowStockAlert?: boolean; // toggle low stock alert per individual medicine
+  lowStockThreshold?: number; // custom threshold per medicine if specified
   // Dynamic Cryptographic E2EE fields
   isEncrypted?: boolean;
   ivMap?: { [key: string]: string };

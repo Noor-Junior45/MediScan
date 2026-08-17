@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Medicine, MedicineHistory } from '../types';
-import { X, Save, Trash2, Eye, AlertTriangle, History, Clock, Sparkles, Plus } from 'lucide-react';
+import { X, Save, Trash2, Eye, AlertTriangle, History, Clock, Sparkles, Plus, Bell, BellOff, Layers, Package, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, collection, query, orderBy, onSnapshot, handleFirestoreError, OperationType } from '../firebase';
 import { MEDICINE_FORM_ICONS, MEDICINE_FORM_LABELS } from '../constants';
@@ -15,10 +15,11 @@ interface MedicineFormProps {
   extractionWarning?: string | null;
   isSaving?: boolean;
   allMedicines?: Medicine[];
+  globalLowQuantityThreshold?: number;
 }
 
 export const MedicineForm: React.FC<MedicineFormProps> = ({ 
-  medicine, onSave, onDelete, onClose, extractionWarning, isSaving, allMedicines = [] 
+  medicine, onSave, onDelete, onClose, extractionWarning, isSaving, allMedicines = [], globalLowQuantityThreshold = 5
 }) => {
   const [formData, setFormData] = useState<Partial<Medicine>>({
     name: '',
@@ -28,6 +29,8 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({
     schedule: '',
     capturedImage: '',
     quantity: undefined,
+    enableLowStockAlert: true,
+    lowStockThreshold: undefined,
   });
   const [history, setHistory] = useState<MedicineHistory[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -48,6 +51,18 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({
       } else {
         setFormData(medicine);
       }
+    } else {
+      setFormData({
+        name: '',
+        dosage: '',
+        expirationDate: '',
+        usageInstructions: '',
+        schedule: '',
+        capturedImage: '',
+        quantity: undefined,
+        enableLowStockAlert: true,
+        lowStockThreshold: undefined,
+      });
     }
   }, [medicine]);
 
@@ -131,6 +146,79 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({
       default: return 'text-white/60 bg-white/5 border-white/10';
     }
   };
+
+  const formatDisplayDate = (dateStr?: string) => {
+    if (!dateStr) return 'N/A';
+    const [year, month, day] = dateStr.split('-').map(Number);
+    if (year && month && day && !isNaN(year) && !isNaN(month) && !isNaN(day)) {
+      const date = new Date(year, month - 1, day);
+      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    }
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const getDiffDays = (dateStr?: string): number => {
+    if (!dateStr) return 9999;
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const expiry = new Date();
+    if (year && month && day && !isNaN(year) && !isNaN(month) && !isNaN(day)) {
+      expiry.setFullYear(year, month - 1, day);
+    } else {
+      const parsed = new Date(dateStr);
+      if (!isNaN(parsed.getTime())) {
+        parsed.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return Math.round((parsed.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      }
+      return 9999;
+    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    expiry.setHours(0, 0, 0, 0);
+    return Math.round((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  const getExpiryStatus = (dateStr?: string) => {
+    if (!dateStr) {
+      return { label: 'No Date', color: 'text-slate-400', bg: 'bg-white/5 border-white/10' };
+    }
+    const diffDays = getDiffDays(dateStr);
+    if (diffDays < 0) return { label: 'Expired', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20' };
+    if (diffDays === 0) return { label: 'Expiring Today', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' };
+    if (diffDays <= 10) return { label: 'Expiring Soon (10d)', color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20' };
+    if (diffDays <= 92) return { label: 'Expiring in 3mo', color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20' };
+    if (diffDays <= 180) return { label: 'Expiring in 6mo', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' };
+    return { label: 'Safe', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' };
+  };
+
+  // Grouped batches for the current medicine
+  const relatedBatches = React.useMemo(() => {
+    const targetName = (formData.name || medicine?.name || '').trim().toLowerCase();
+    if (!targetName) return [];
+    return allMedicines.filter(m => !m.isDeleted && m.name.trim().toLowerCase() === targetName);
+  }, [allMedicines, formData.name, medicine?.name]);
+
+  const activeBatches = React.useMemo(() => {
+    return relatedBatches
+      .filter(m => !m.taken && getDiffDays(m.expirationDate) >= 0 && (m.quantity === undefined || m.quantity > 0))
+      .sort((a, b) => getDiffDays(a.expirationDate) - getDiffDays(b.expirationDate));
+  }, [relatedBatches]);
+
+  const expiredOrEmptyBatches = React.useMemo(() => {
+    return relatedBatches
+      .filter(m => m.taken || getDiffDays(m.expirationDate) < 0 || (m.quantity !== undefined && m.quantity <= 0))
+      .sort((a, b) => getDiffDays(b.expirationDate) - getDiffDays(a.expirationDate));
+  }, [relatedBatches]);
+
+  const totalActiveUnits = React.useMemo(() => {
+    return activeBatches.reduce((sum, b) => sum + (b.quantity || 0), 0);
+  }, [activeBatches]);
 
   const getDisplayMonth = (dateStr?: string) => {
     if (!dateStr) return '';
@@ -311,7 +399,17 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({
                         <button
                           key={form}
                           type="button"
-                          onClick={() => setFormData({ ...formData, form })}
+                          onClick={() => {
+                            const isLiquid = form === 'syrup' || form === 'liquid' || form === 'ampule';
+                            setFormData({ 
+                              ...formData, 
+                              form,
+                              // If not yet explicitly toggled by user and switching to syrup/liquid, default low stock alert to false
+                              ...(formData.enableLowStockAlert === undefined || (!medicine && formData.enableLowStockAlert === true && isLiquid) 
+                                ? { enableLowStockAlert: !isLiquid } 
+                                : {})
+                            });
+                          }}
                           className={`flex flex-col items-center justify-center p-2 rounded-2xl border transition-all gap-1 ${
                             formData.form === form 
                               ? 'bg-white/10 border-white/40 text-white' 
@@ -340,7 +438,7 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({
                       <div className="space-y-1.5 overflow-hidden">
                         <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1 flex justify-between items-center">
                           Stock
-                          {formData.quantity !== undefined && formData.quantity < 5 && (
+                          {formData.quantity !== undefined && formData.enableLowStockAlert !== false && formData.quantity <= (formData.lowStockThreshold ?? globalLowQuantityThreshold) && (
                             <span className="text-red-400 text-[8px] animate-pulse">Low!</span>
                           )}
                         </label>
@@ -365,6 +463,69 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({
                       </div>
                     </div>
 
+                    {/* Individual Low Stock Alert Setting */}
+                    <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {formData.enableLowStockAlert !== false ? (
+                            <Bell size={14} className="text-amber-400" />
+                          ) : (
+                            <BellOff size={14} className="text-white/40" />
+                          )}
+                          <div>
+                            <span className="text-xs font-semibold text-white block">Low Stock Alert</span>
+                            <span className="text-[9px] text-white/40 block">
+                              {formData.enableLowStockAlert !== false 
+                                ? 'Notify when stock runs low' 
+                                : 'Disabled (No low quantity emails or warnings for this item)'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const current = formData.enableLowStockAlert !== false;
+                            setFormData({ ...formData, enableLowStockAlert: !current });
+                          }}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                            formData.enableLowStockAlert !== false ? 'bg-[#0f9d58]' : 'bg-white/20'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              formData.enableLowStockAlert !== false ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {formData.enableLowStockAlert !== false && (
+                        <div className="pt-2 border-t border-white/5 flex items-center justify-between gap-3">
+                          <label className="text-[10px] text-white/60 font-medium">
+                            Alert when stock drops to or below:
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={formData.lowStockThreshold === undefined ? '' : formData.lowStockThreshold}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === '') {
+                                setFormData({ ...formData, lowStockThreshold: undefined });
+                              } else {
+                                const parsed = parseInt(val, 10);
+                                if (!isNaN(parsed) && parsed >= 0) {
+                                  setFormData({ ...formData, lowStockThreshold: parsed });
+                                }
+                              }
+                            }}
+                            placeholder={`Default (${globalLowQuantityThreshold})`}
+                            className="w-24 bg-black/30 border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-white text-right focus:outline-none focus:border-amber-400 placeholder:text-white/25"
+                          />
+                        </div>
+                      )}
+                    </div>
+
                   <div className="space-y-1.5 relative">
                     <label className="text-[10px] uppercase tracking-[0.2em] text-orange-400 font-bold ml-1 flex items-center gap-1">
                       Expiration Date <AlertTriangle size={10} />
@@ -386,6 +547,118 @@ export const MedicineForm: React.FC<MedicineFormProps> = ({
                       Verify this is NOT the Mfg Date
                     </p>
                   </div>
+
+                  {/* Stock & Expiration Breakdown for this Medicine */}
+                  {relatedBatches.length > 0 && (
+                    <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Clock size={15} className="text-[#0f9d58]" />
+                          <div>
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-white">Stock & Expiration Breakdown</h4>
+                            <p className="text-[10px] text-white/40">
+                              {activeBatches.length} active {activeBatches.length === 1 ? 'batch' : 'batches'} • {totalActiveUnits} total units in stock
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 pt-1">
+                        {/* Active Batches */}
+                        {activeBatches.map((batch) => {
+                          const isCurrent = formData.id ? batch.id === formData.id : batch.id === medicine?.id;
+                          const status = getExpiryStatus(batch.expirationDate);
+                          const diffDays = getDiffDays(batch.expirationDate);
+
+                          return (
+                            <div
+                              key={batch.id}
+                              onClick={() => {
+                                if (!isCurrent) {
+                                  setFormData(batch);
+                                }
+                              }}
+                              className={`p-3 rounded-xl border transition-all ${
+                                isCurrent 
+                                  ? 'bg-[#0f9d58]/10 border-[#0f9d58]/40 ring-1 ring-[#0f9d58]/30 cursor-default' 
+                                  : 'bg-white/[0.02] border-white/10 hover:bg-white/[0.06] hover:border-white/20 cursor-pointer'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <span className={`w-2 h-2 rounded-full shrink-0 ${isCurrent ? 'bg-[#0f9d58]' : 'bg-white/40'}`} />
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="text-xs font-semibold text-white truncate">
+                                      <strong className="text-emerald-400 font-bold">{batch.quantity !== undefined ? `${batch.quantity} units` : '1 pack'}</strong> will expire on <strong className="text-white font-bold">{formatDisplayDate(batch.expirationDate)}</strong>
+                                    </span>
+                                    <span className="text-[9px] text-white/40 font-mono">
+                                      {batch.dosage} • {diffDays === 0 ? 'Expires today' : `${diffDays} days remaining`}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className={`text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${status.bg} ${status.color}`}>
+                                    {status.label}
+                                  </span>
+                                  {isCurrent ? (
+                                    <span className="text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#0f9d58]/20 text-[#0f9d58] border border-[#0f9d58]/30">
+                                      Editing
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] text-accent hover:underline font-medium">
+                                      Switch
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Expired or Empty Batches */}
+                        {expiredOrEmptyBatches.length > 0 && (
+                          <div className="pt-2 border-t border-white/5 space-y-1.5">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-rose-400/80 block">
+                              Expired / Finished Batches ({expiredOrEmptyBatches.length})
+                            </span>
+                            {expiredOrEmptyBatches.map((batch) => {
+                              const isCurrent = formData.id ? batch.id === formData.id : batch.id === medicine?.id;
+                              return (
+                                <div
+                                  key={batch.id}
+                                  onClick={() => {
+                                    if (!isCurrent) {
+                                      setFormData(batch);
+                                    }
+                                  }}
+                                  className={`p-2.5 rounded-xl border border-rose-500/20 bg-rose-500/5 flex items-center justify-between gap-2 transition-all ${
+                                    isCurrent ? 'ring-1 ring-rose-500/40' : 'hover:bg-rose-500/10 cursor-pointer'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="text-xs text-white/70 truncate">
+                                        <strong className="text-rose-400 font-bold">{batch.quantity !== undefined ? `${batch.quantity} units` : 'Stock'}</strong> expired on <strong className="text-white/90 font-bold">{formatDisplayDate(batch.expirationDate)}</strong>
+                                      </span>
+                                      <span className="text-[9px] text-rose-400/60 font-mono">
+                                        Deducted from active inventory
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <span className="text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                    {batch.taken ? 'Taken' : 'Expired'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                     <div className="space-y-1.5">
                       <label className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold ml-1">Medication Schedule</label>
